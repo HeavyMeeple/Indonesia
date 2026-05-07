@@ -55,6 +55,7 @@ header p{font-size:11px;color:var(--td);font-style:italic;}
 .zbtn:hover{border-color:var(--gdim);color:var(--gold);}
 /* RIGHT */
 .rpanel{width:320px;flex-shrink:0;display:flex;flex-direction:column;overflow:hidden;}
+.rpanel.solo{width:100%;max-width:680px;margin:0 auto;}
 .rtop{flex:1;overflow-y:auto;padding:12px;}
 .rtop::-webkit-scrollbar{width:3px;}
 .rtop::-webkit-scrollbar-thumb{background:var(--b2);}
@@ -145,27 +146,27 @@ select option{background:var(--bg);}
   <div style="width:38px;height:38px;border:1px solid var(--gdim);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;">🏝️</div>
   <div>
     <h1>INDONESIA</h1>
-    <p>คลิกแผนที่เพื่อเลือกพื้นที่ — Shipping & Revenue Calculator</p>
+    <p>Click the map to select areas — Shipping &amp; Revenue Calculator</p>
   </div>
   <div style="margin-left:auto;display:flex;gap:5px;">
-    <button class="hdrbtn" id="hMap" onclick="mainTab('map')">🗺 แผนที่</button>
-    <button class="hdrbtn active" id="hSetup" onclick="mainTab('setup')">⚙ ตั้งค่า</button>
-    <button class="hdrbtn" id="hResults" onclick="mainTab('results')">📊 ผลลัพธ์</button>
+    <button class="hdrbtn" id="hMap" onclick="mainTab('map')">🗺 Map</button>
+    <button class="hdrbtn active" id="hSetup" onclick="mainTab('setup')">⚙ Setup</button>
+    <button class="hdrbtn" id="hResults" onclick="mainTab('results')">📊 Results</button>
   </div>
 </header>
 <div class="main">
   <!-- MAP PANEL -->
   <div class="map-panel">
     <div class="modebar">
-      <button class="mbtn" id="mFactory" onclick="setMode('factory')">🏭 โรงงาน</button>
-      <button class="mbtn" id="mSea" onclick="setMode('sea')">🌊 เรือ</button>
-      <button class="mbtn" id="mCity" onclick="setMode('city')">🏙️ เมือง</button>
-      <button class="mbtn active" id="mView" onclick="setMode('view')">👁 ดู</button>
+      <button class="mbtn" id="mFactory" onclick="setMode('factory')">🏭 Factory</button>
+      <button class="mbtn" id="mSea" onclick="setMode('sea')">🌊 Ship</button>
+      <button class="mbtn" id="mCity" onclick="setMode('city')">🏙️ City</button>
+      <button class="mbtn active" id="mView" onclick="setMode('view')">👁 View</button>
     </div>
     <div class="map-scroll" id="mapScroll">
       <svg id="mapSvg" xmlns="http://www.w3.org/2000/svg"></svg>
     </div>
-    <div class="hint" id="hint">เลือก mode แล้วคลิกบนแผนที่</div>
+    <div class="hint" id="hint">Select a mode then click on the map</div>
     <div class="zoom-btns">
       <button class="zbtn" onclick="zoom(1.3)">+</button>
       <button class="zbtn" onclick="zoom(0.77)">−</button>
@@ -178,16 +179,16 @@ select option{background:var(--bg);}
       <!-- SETUP -->
       <div id="panelSetup">
         <div class="sec">
-          <div class="sec-t">ผู้เล่น</div>
+          <div class="sec-t">Players</div>
           <div class="ptabs" id="ptabs"></div>
         </div>
         <div class="tabstrip">
-          <button class="xtab active" onclick="subTab('co',this)">บริษัท</button>
-          <button class="xtab" onclick="subTab('city',this)">เมือง</button>
+          <button class="xtab active" onclick="subTab('co',this)">Companies</button>
+          <button class="xtab" onclick="subTab('city',this)">Cities</button>
         </div>
         <!-- Companies sub -->
         <div id="sub-co">
-          <div class="notice">Mode 🏭 → คลิก land area ▸ กด "+ โรงงาน"<br>Mode 🌊 → คลิก sea area ▸ กด "+ เรือ"</div>
+          <div class="notice">Mode 🏭 → click land area ▸ press "+ Factory"<br>Mode 🌊 → click sea area ▸ press "+ Ship"</div>
           <div style="display:flex;gap:5px;margin-bottom:6px;align-items:center;">
             <select id="quickGood" style="flex:1;">
               <option value="Rice">Rice (20฿)</option>
@@ -196,33 +197,33 @@ select option{background:var(--bg);}
               <option value="SiapSaji">SiapSaji (35฿)</option>
               <option value="Oil">Oil (40฿)</option>
             </select>
-            <button class="btn bp" onclick="addFactory()">+ โรงงาน</button>
+            <button class="btn bp" onclick="addFactory()">+ Factory</button>
           </div>
           <div style="display:flex;gap:5px;margin-bottom:8px;align-items:center;">
             <input type="number" id="shipCap" value="3" min="1" max="15" style="width:50px;"/>
             <span style="font-size:10px;color:var(--td);">cap</span>
-            <button class="btn" style="border-color:#4060a0;color:#6090c0;flex:1;" onclick="addShip()">+ เรือ</button>
+            <button class="btn" style="border-color:#4060a0;color:#6090c0;flex:1;" onclick="addShip()">+ Ship</button>
           </div>
           <!-- Selected display -->
           <div id="selDisplay" style="display:none;margin-bottom:8px;">
-            <div style="font-size:9px;color:var(--tm);letter-spacing:1px;text-transform:uppercase;margin-bottom:3px;">เลือกไว้ (คลิกเพื่อเอาออก)</div>
+            <div style="font-size:9px;color:var(--tm);letter-spacing:1px;text-transform:uppercase;margin-bottom:3px;">Selected (click to remove)</div>
             <div class="chips" id="selChips"></div>
           </div>
           <div id="coList"></div>
         </div>
         <!-- Cities sub -->
         <div id="sub-city" style="display:none;">
-          <div class="notice">Mode 🏙️ → คลิก land area เพื่อวางเมือง</div>
+          <div class="notice">Mode 🏙️ → click land area to place a city</div>
           <div id="cityList"></div>
         </div>
       </div>
       <!-- RESULTS -->
       <div id="panelResults" style="display:none;">
-        <div id="resContent"><div class="empty"><div class="ico">📊</div><p>กดคำนวณเพื่อดูผล</p></div></div>
+        <div id="resContent"><div class="empty"><div class="ico">📊</div><p>Press Calculate to see results</p></div></div>
       </div>
     </div>
     <div class="rbot">
-      <button class="btn bcalc" onclick="calculate()">⚡ คำนวณเส้นทาง</button>
+      <button class="btn bcalc" onclick="calculate()">⚡ Calculate Routes</button>
     </div>
   </div>
 </div>
@@ -230,17 +231,17 @@ select option{background:var(--bg);}
 <!-- City Modal -->
 <div class="modal-ov" id="cityModal" style="display:none;" onclick="if(event.target===this)closeModal()">
   <div class="modal-box">
-    <div class="mtitle">🏙️ เพิ่มเมือง</div>
-    <div class="frow"><label>ชื่อเมือง</label><input type="text" id="mCityName" placeholder="เช่น Batavia"/></div>
+    <div class="mtitle">🏙️ Add City</div>
+    <div class="frow"><label>City Name</label><input type="text" id="mCityName" placeholder="e.g. Batavia"/></div>
     <div class="frow"><label>Area ID</label><input type="text" id="mAreaId" readonly style="color:var(--gold);"/></div>
     <div class="frow">
-      <label>Sea Areas ที่ติด (auto)</label>
+      <label>Adjacent Sea Areas (auto)</label>
       <div id="mSeaAreas" class="chips" style="padding:4px;background:var(--bg);border:1px solid var(--b2);min-height:22px;"></div>
     </div>
-    <div class="frow"><label>Demand ของเมือง</label><div id="mDemands"></div></div>
+    <div class="frow"><label>City Demand</label><div id="mDemands"></div></div>
     <div style="display:flex;gap:5px;margin-top:10px;">
-      <button class="btn bp" onclick="saveCity()">บันทึก</button>
-      <button class="btn bg" onclick="closeModal()">ยกเลิก</button>
+      <button class="btn bp" onclick="saveCity()">Save</button>
+      <button class="btn bg" onclick="closeModal()">Cancel</button>
     </div>
     <div class="err" id="mErr"></div>
   </div>
@@ -279,7 +280,7 @@ const LAND2SEA={};
 for(const[s,a]of Object.entries(SEA_ADJ))for(const l of a.land){if(!LAND2SEA[l])LAND2SEA[l]=[];LAND2SEA[l].push(s);}
 const PCOLORS=['#c9943a','#4080c0','#c04030','#40a040','#8040c0','#c08040'];
 
-let players=[{id:'p1',name:'ผู้เล่น 1',color:PCOLORS[0],companies:[]},{id:'p2',name:'ผู้เล่น 2',color:PCOLORS[1],companies:[]}];
+let players=[{id:'p1',name:'Player 1',color:PCOLORS[0],companies:[]},{id:'p2',name:'Player 2',color:PCOLORS[1],companies:[]}];
 let pid='p1', cities=[], mode='view';
 let selLand=new Set(), selSea=new Set();
 let scale=0.38;
@@ -334,7 +335,7 @@ function zoom(f){scale=Math.max(0.12,Math.min(2.8,scale*f));applyScale();}
 function applyScale(){svg.setAttribute('width',NW*scale);svg.setAttribute('height',NH*scale);}
 
 // MODE
-const HINTS={factory:'คลิก land area (สีขาว) เพื่อเลือกพื้นที่โรงงาน',sea:'คลิก sea area (สีน้ำเงิน S01-S21) เพื่อเลือกเส้นทางเรือ',city:'คลิก land area เพื่อวางเมือง',view:'ดูแผนที่ เลื่อน/ซูมได้'};
+const HINTS={factory:'Click land area (white) to select factory location',sea:'Click sea area (blue S01-S21) to select ship route',city:'Click land area to place a city',view:'View map — scroll/zoom to navigate'};
 function setMode(m){
   mode=m;
   ['factory','sea','city','view'].forEach(x=>{
@@ -418,7 +419,7 @@ function renderCityMarkers(){
   for(const ct of cities){
     const p=LAND_POS[ct.areaId]; if(!p) continue;
     const g=svgEl('g'); g.className.baseVal='city-mk';
-    g.onclick=()=>{if(confirm('ลบเมือง "'+ct.cityName+'"?')){cities=cities.filter(c=>c.id!==ct.id);renderCityMarkers();renderCityList();}};
+    g.onclick=()=>{if(confirm('Delete city "'+ct.cityName+'"?')){cities=cities.filter(c=>c.id!==ct.id);renderCityMarkers();renderCityList();}};
     const c=svgEl('circle');c.setAttribute('cx',p.x);c.setAttribute('cy',p.y-16);c.setAttribute('r',9);
     const t=svgEl('text');t.setAttribute('x',p.x);t.setAttribute('y',p.y-5);t.textContent=ct.cityName.substring(0,7);
     g.appendChild(c);g.appendChild(t);cityG.appendChild(g);
@@ -437,7 +438,7 @@ function renderPTabs(){
   const ab=document.createElement('button');ab.className='addpbtn';ab.textContent='+';
   ab.onclick=()=>{
     const i=players.length;
-    players.push({id:'p'+npid++,name:'ผู้เล่น '+(i+1),color:PCOLORS[i%PCOLORS.length],companies:[]});
+    players.push({id:'p'+npid++,name:'Player '+(i+1),color:PCOLORS[i%PCOLORS.length],companies:[]});
     pid=players[players.length-1].id;renderPTabs();renderCoList();
   };
   el.appendChild(ab);
@@ -445,23 +446,23 @@ function renderPTabs(){
 
 // COMPANIES
 function addFactory(){
-  if(!selLand.size){alert('Mode 🏭 → คลิก land area ก่อน');return;}
+  if(!selLand.size){alert('Mode 🏭 → click land area first');return;}
   const player=players.find(p=>p.id===pid);
   const good=document.getElementById('quickGood').value;
   player.companies.push({id:'co'+nco++,name:good+' #'+(nco-1),type:'Production',good,landAreas:[...selLand].sort(),ownerId:pid});
   selLand.clear();refreshDots();refreshSelDisplay();renderCoList();
 }
 function addShip(){
-  if(!selSea.size){alert('Mode 🌊 → คลิก sea area ก่อน');return;}
+  if(!selSea.size){alert('Mode 🌊 → click sea area first');return;}
   const player=players.find(p=>p.id===pid);
   const cap=parseInt(document.getElementById('shipCap').value)||3;
-  player.companies.push({id:'co'+nco++,name:'เรือ #'+(nco-1),type:'Shipping',seaCapacities:[...selSea].map(s=>{return{seaId:s,capacity:cap}}),ownerId:pid});
+  player.companies.push({id:'co'+nco++,name:'Ship #'+(nco-1),type:'Shipping',seaCapacities:[...selSea].map(s=>{return{seaId:s,capacity:cap}}),ownerId:pid});
   selSea.clear();refreshDots();refreshSelDisplay();renderCoList();
 }
 function renderCoList(){
   const player=players.find(p=>p.id===pid);
   const el=document.getElementById('coList');
-  if(!player||!player.companies.length){el.innerHTML='<div class="notice">ยังไม่มีบริษัท</div>';return;}
+  if(!player||!player.companies.length){el.innerHTML='<div class="notice">No companies yet</div>';return;}
   el.innerHTML=player.companies.map(co=>{
     let detail='';
     if(co.type==='Production'){
@@ -480,7 +481,7 @@ function openCityModal(areaId){
   document.getElementById('mAreaId').value=areaId;
   document.getElementById('mErr').textContent='';
   const seaIds=LAND2SEA[areaId]||[];
-  document.getElementById('mSeaAreas').innerHTML=seaIds.length?seaIds.map(s=>`<div class="chip schip" style="cursor:default;">${s}</div>`).join(''):'<span style="color:var(--tm);font-size:10px;">ไม่มี</span>';
+  document.getElementById('mSeaAreas').innerHTML=seaIds.length?seaIds.map(s=>`<div class="chip schip" style="cursor:default;">${s}</div>`).join(''):'<span style="color:var(--tm);font-size:10px;">None</span>';
   document.getElementById('mDemands').innerHTML=Object.keys(GOOD_REV).map(g=>
     `<div style="display:grid;grid-template-columns:80px 1fr;gap:5px;align-items:center;margin-bottom:4px;"><span class="gb g${g}">${g}</span><input type="number" id="md_${g}" value="0" min="0" max="20"/></div>`
   ).join('');
@@ -489,7 +490,7 @@ function openCityModal(areaId){
 function closeModal(){document.getElementById('cityModal').style.display='none';}
 function saveCity(){
   const name=document.getElementById('mCityName').value.trim();
-  if(!name){document.getElementById('mErr').textContent='ใส่ชื่อเมือง';return;}
+  if(!name){document.getElementById('mErr').textContent='Enter city name';return;}
   const areaId=document.getElementById('mAreaId').value;
   const seaIds=LAND2SEA[areaId]||[];
   const demands={};
@@ -499,10 +500,10 @@ function saveCity(){
 }
 function renderCityList(){
   const el=document.getElementById('cityList');
-  if(!cities.length){el.innerHTML='<div class="notice">ยังไม่มีเมือง</div>';return;}
+  if(!cities.length){el.innerHTML='<div class="notice">No cities yet</div>';return;}
   el.innerHTML=cities.map(c=>{
     const ds=Object.entries(c.demands).filter(([,v])=>v>0).map(([g,v])=>`<span class="gb g${g}">${g}:${v}</span>`).join(' ');
-    return`<div class="city-row"><div class="city-dot"></div><div style="flex:1;"><div style="font-family:'Cinzel',serif;font-size:9px;color:var(--text);">${c.cityName} <span style="color:var(--tm);font-family:monospace;font-size:8px;">${c.areaId}</span></div><div style="margin-top:2px;">${ds||'<span style="color:var(--tm);font-size:9px;">ไม่มี demand</span>'}</div></div><button class="delbtn" onclick="cities=cities.filter(x=>x.id!=='${c.id}');renderCityMarkers();renderCityList();">✕</button></div>`;
+    return`<div class="city-row"><div class="city-dot"></div><div style="flex:1;"><div style="font-family:'Cinzel',serif;font-size:9px;color:var(--text);">${c.cityName} <span style="color:var(--tm);font-family:monospace;font-size:8px;">${c.areaId}</span></div><div style="margin-top:2px;">${ds||'<span style="color:var(--tm);font-size:9px;">No demand</span>'}</div></div><button class="delbtn" onclick="cities=cities.filter(x=>x.id!=='${c.id}');renderCityMarkers();renderCityList();">✕</button></div>`;
   }).join('');
 }
 
@@ -511,8 +512,9 @@ function subTab(t,btn){nsub=t;document.querySelectorAll('.xtab').forEach(x=>x.cl
 function mainTab(t){
   const mp=document.querySelector('.map-panel');
   const rp=document.querySelector('.rpanel');
-  mp.style.display=t==='map'?'flex':'';
-  rp.style.display=t==='map'?'none':'';
+  mp.style.display=t==='map'?'flex':'none';
+  rp.style.display=t==='map'?'none':'flex';
+  rp.classList.toggle('solo',t!=='map');
   document.getElementById('panelSetup').style.display=t==='setup'?'block':'none';
   document.getElementById('panelResults').style.display=t==='results'?'block':'none';
   ['Map','Setup','Results'].forEach(x=>{const b=document.getElementById('h'+x);b.className='hdrbtn'+(x.toLowerCase()===t?' active':'');});
@@ -582,7 +584,7 @@ function solveProd(co,player,allShip,allCities){
   const good=co.good,rev=GOOD_REV[good];
   const zones=buildZones(co.landAreas);
   const rel=allCities.filter(c=>c.demands[good]>0);
-  if(!rel.length)return{good,zones,deliveries:[],shippingPayments:[],totalDelivered:0,revenue:0,shippingCost:0,netIncome:0,msg:'ไม่มีเมืองที่ต้องการ '+good};
+  if(!rel.length)return{good,zones,deliveries:[],shippingPayments:[],totalDelivered:0,revenue:0,shippingCost:0,netIncome:0,msg:'No cities demand '+good};
   const mc=new MCMF(),src=mc.addNode(),snk=mc.addNode();
   const zNodes=[],zInfo=[];
   for(let z=0;z<zones.length;z++){
@@ -641,7 +643,7 @@ function drawLines(playerResults){
 function calculate(){
   const allShip=players.flatMap(p=>p.companies.filter(c=>c.type==='Shipping').map(c=>{return{...c,ownerId:p.id}}));
   const rc=document.getElementById('resContent'); rc.innerHTML='';
-  if(!cities.length){rc.innerHTML='<div class="notice">กรุณาเพิ่มเมืองก่อน</div>';mainTab('results');return;}
+  if(!cities.length){rc.innerHTML='<div class="notice">Please add cities first</div>';mainTab('results');return;}
   const prs=[];let grand=0;
   for(const p of players){
     const prods=p.companies.filter(c=>c.type==='Production');if(!prods.length)continue;
@@ -649,12 +651,12 @@ function calculate(){
     for(const co of prods){const r=solveProd(co,p,allShip,cities);coR.push({co,r});net+=r.netIncome;}
     prs.push({player:p,coResults:coR,net});grand+=net;
   }
-  if(!prs.length){rc.innerHTML='<div class="notice">ไม่มี Production Company</div>';mainTab('results');return;}
+  if(!prs.length){rc.innerHTML='<div class="notice">No Production Companies</div>';mainTab('results');return;}
   // Summary
   const sum=document.createElement('div');sum.className='sumbox';
-  sum.innerHTML=`<div style="font-family:'Cinzel',serif;font-size:9px;letter-spacing:2px;color:var(--gold);margin-bottom:6px;">สรุปรายได้สุทธิ</div>`
+  sum.innerHTML=`<div style="font-family:'Cinzel',serif;font-size:9px;letter-spacing:2px;color:var(--gold);margin-bottom:6px;">Net Revenue Summary</div>`
     +prs.map(pr=>`<div class="sumrow"><span style="color:var(--td);font-style:italic;"><span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:${pr.player.color};margin-right:4px;"></span>${pr.player.name}</span><span style="color:${pr.net>=0?'var(--grn)':'var(--red)'};font-family:monospace;">${pr.net>=0?'+':''}${pr.net}฿</span></div>`).join('')
-    +`<div class="sumrow tot"><span>รวม</span><span>${grand>=0?'+':''}${grand}฿</span></div>`;
+    +`<div class="sumrow tot"><span>Total</span><span>${grand>=0?'+':''}${grand}฿</span></div>`;
   rc.appendChild(sum);
   for(const pr of prs){
     const bl=document.createElement('div');bl.className='res-block';
@@ -662,16 +664,16 @@ function calculate(){
     for(const{co,r}of pr.coResults){
       const cb=document.createElement('div');cb.className='res-co';
       let body='';
-      if(!r.totalDelivered){body=`<div style="color:var(--tm);font-style:italic;font-size:10px;">${r.msg||'ส่งไม่ได้'}</div>`;}
+      if(!r.totalDelivered){body=`<div style="color:var(--tm);font-style:italic;font-size:10px;">${r.msg||'Cannot deliver'}</div>`;}
       else{
         const rows=r.deliveries.map(d=>{
           const ph=d.seaPath.map(s=>`<span class="pchip">${s}</span>`).join('<span class="parr">›</span>');
           return`<tr><td>${d.zoneId}</td><td style="max-width:60px;overflow:hidden;font-size:9px;">${d.cityName}</td><td style="font-size:9px;">${d.shipName}</td><td class="num">${d.quantity}</td><td class="num pos">+${d.quantity*GOOD_REV[r.good]}฿</td><td><div style="display:flex;align-items:center;gap:1px;flex-wrap:wrap;">${ph}</div></td></tr>`;
         }).join('');
-        const pays=r.shippingPayments.map(p=>`<tr><td colspan="4" style="color:var(--td);font-size:9px;">ค่าเรือ→${p.ownerName}</td><td class="num neg">-${p.amount}฿</td><td></td></tr>`).join('');
-        body=`<table class="itbl"><thead><tr><th>Zone</th><th>เมือง</th><th>เรือ</th><th>จำนวน</th><th>รายได้</th><th>เส้นทาง</th></tr></thead><tbody>${rows}${pays}<tr style="background:rgba(201,148,58,.05);"><td colspan="4" class="tot" style="font-family:'Cinzel',serif;font-size:8px;letter-spacing:1px;">NET</td><td class="num tot">${r.netIncome>=0?'+':''}${r.netIncome}฿</td><td></td></tr></tbody></table>`;
+        const pays=r.shippingPayments.map(p=>`<tr><td colspan="4" style="color:var(--td);font-size:9px;">Ship fee→${p.ownerName}</td><td class="num neg">-${p.amount}฿</td><td></td></tr>`).join('');
+        body=`<table class="itbl"><thead><tr><th>Zone</th><th>City</th><th>Ship</th><th>Qty</th><th>Revenue</th><th>Route</th></tr></thead><tbody>${rows}${pays}<tr style="background:rgba(201,148,58,.05);"><td colspan="4" class="tot" style="font-family:'Cinzel',serif;font-size:8px;letter-spacing:1px;">NET</td><td class="num tot">${r.netIncome>=0?'+':''}${r.netIncome}฿</td><td></td></tr></tbody></table>`;
       }
-      cb.innerHTML=`<div style="font-family:'Cinzel',serif;font-size:9px;letter-spacing:1.5px;margin-bottom:6px;display:flex;align-items:center;gap:5px;"><span class="gb g${r.good}">${r.good}</span>${co.name}<span style="color:var(--tm);font-size:8px;margin-left:auto;">${r.totalDelivered} สินค้า</span></div>${body}`;
+      cb.innerHTML=`<div style="font-family:'Cinzel',serif;font-size:9px;letter-spacing:1.5px;margin-bottom:6px;display:flex;align-items:center;gap:5px;"><span class="gb g${r.good}">${r.good}</span>${co.name}<span style="color:var(--tm);font-size:8px;margin-left:auto;">${r.totalDelivered} units</span></div>${body}`;
       bl.appendChild(cb);
     }
     rc.appendChild(bl);

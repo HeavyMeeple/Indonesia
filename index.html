@@ -1,0 +1,808 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Indonesia — Shipping &amp; Revenue Calculator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Sarabun:ital,wght@0,300;0,400;0,600;1,300&display=swap" rel="stylesheet">
+<style>
+:root {
+  --gold: #b8963e;
+  --gold-light: #d4a84e;
+  --cream: #fdf9f2;
+  --bg: #f0e8d4;
+  --text: #3d2b1f;
+  --border: #c9a96e;
+  --sea: #7ba7bc;
+  --land: #b8a870;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Sarabun', sans-serif;
+  background: var(--cream);
+  color: var(--text);
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ── Header ── */
+header {
+  display: flex;
+  align-items: center;
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--cream);
+  gap: 14px;
+  flex-shrink: 0;
+}
+.logo {
+  width: 44px; height: 44px;
+  background: linear-gradient(135deg, var(--gold-light), var(--gold));
+  border-radius: 6px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 22px; flex-shrink: 0;
+}
+.title-block h1 {
+  font-size: 18px;
+  letter-spacing: 4px;
+  font-weight: 600;
+}
+.title-block p {
+  font-size: 11px;
+  color: var(--gold);
+  font-style: italic;
+  margin-top: 1px;
+}
+.header-btns { margin-left: auto; display: flex; gap: 8px; }
+.btn-sm {
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--gold);
+  padding: 5px 14px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  font-family: 'Sarabun', sans-serif;
+}
+.btn-sm:hover { background: rgba(184,150,62,.1); }
+
+/* ── Layout ── */
+.main { display: flex; flex: 1; overflow: hidden; }
+
+/* ── Map panel ── */
+.map-panel {
+  width: 400px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+}
+.map-tabs {
+  display: flex;
+  padding: 8px 10px 0;
+  gap: 4px;
+  background: var(--cream);
+  border-bottom: 1px solid var(--border);
+}
+.map-tab {
+  padding: 6px 12px;
+  border-radius: 5px 5px 0 0;
+  cursor: pointer;
+  font-size: 12px;
+  border: 1px solid transparent;
+  border-bottom: none;
+  background: transparent;
+  color: var(--text);
+  font-family: 'Sarabun', sans-serif;
+  opacity: .6;
+  transition: all .15s;
+}
+.map-tab.active {
+  border-color: var(--border);
+  border-bottom-color: var(--cream);
+  background: var(--cream);
+  opacity: 1;
+  color: var(--gold);
+}
+.map-tab:not(.active):hover { opacity: 1; background: rgba(184,150,62,.1); }
+
+.map-wrap { flex: 1; overflow: hidden; position: relative; }
+#game-map { width: 100%; height: 100%; display: block; cursor: crosshair; }
+
+.map-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  border-top: 1px solid var(--border);
+  background: var(--cream);
+  flex-shrink: 0;
+}
+.map-hint {
+  font-size: 11px;
+  color: var(--gold);
+  text-decoration: underline;
+  cursor: pointer;
+  font-style: italic;
+}
+.zoom-col { display: flex; flex-direction: column; gap: 3px; }
+.zoom-btn {
+  width: 26px; height: 26px;
+  border: 1px solid var(--border);
+  background: var(--cream);
+  cursor: pointer;
+  border-radius: 3px;
+  font-size: 14px;
+  color: var(--gold);
+  font-family: monospace;
+  line-height: 1;
+}
+.zoom-btn:hover { background: rgba(184,150,62,.1); }
+
+/* ── Calc panel ── */
+.calc-panel { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+.player-bar {
+  padding: 12px 20px 10px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.bar-label {
+  font-size: 11px;
+  color: var(--gold);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+.player-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+.player-tab {
+  padding: 5px 14px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  background: var(--cream);
+  color: var(--text);
+  font-family: 'Sarabun', sans-serif;
+  transition: all .15s;
+}
+.player-tab.active { background: var(--gold); color: #fff; border-color: var(--gold); }
+.player-tab.add { border-style: dashed; color: var(--gold); }
+.player-tab:hover:not(.active) { background: rgba(184,150,62,.12); }
+
+.content-area { flex: 1; overflow-y: auto; display: flex; flex-direction: column; }
+
+.inner-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.inner-tab {
+  padding: 8px 18px;
+  cursor: pointer;
+  font-size: 12px;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  color: var(--text);
+  opacity: .6;
+  font-family: 'Sarabun', sans-serif;
+}
+.inner-tab.active { border-bottom-color: var(--gold); color: var(--gold); opacity: 1; }
+
+.tab-pane { padding: 14px 20px; flex: 1; }
+
+.mode-guide {
+  font-size: 12px;
+  color: #555;
+  line-height: 2;
+  margin-bottom: 14px;
+  padding: 10px 12px;
+  background: rgba(184,150,62,.06);
+  border-radius: 4px;
+  border-left: 3px solid var(--gold);
+}
+.mode-guide em { font-style: normal; color: var(--gold); }
+
+.input-row { display: flex; gap: 6px; align-items: center; margin-bottom: 8px; }
+.goods-sel {
+  flex: 1;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 7px 10px;
+  background: #fff;
+  font-size: 12px;
+  color: var(--text);
+  font-family: 'Sarabun', sans-serif;
+}
+.num-in {
+  width: 52px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 7px;
+  font-size: 12px;
+  text-align: center;
+  font-family: 'Sarabun', sans-serif;
+}
+.cap-lbl { font-size: 11px; color: #888; white-space: nowrap; }
+.zone-disp {
+  flex: 1;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 7px 10px;
+  font-size: 11px;
+  color: #aaa;
+  background: #fff;
+  min-width: 0;
+}
+.zone-disp.sel { color: var(--gold); font-weight: 600; }
+.btn-add {
+  border: 1px solid var(--gold);
+  background: transparent;
+  color: var(--gold);
+  padding: 7px 14px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  white-space: nowrap;
+  font-family: 'Sarabun', sans-serif;
+  flex-shrink: 0;
+}
+.btn-add:hover { background: rgba(184,150,62,.1); }
+
+.empty-msg { color: #aaa; font-size: 12px; padding: 8px 0; font-style: italic; }
+
+.co-list { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
+.co-card {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 12px;
+  background: #fff;
+}
+.co-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+.co-name { font-size: 13px; font-weight: 600; color: var(--gold); }
+.co-del { background: none; border: none; cursor: pointer; color: #ccc; font-size: 18px; line-height: 1; padding: 0; }
+.co-del:hover { color: #d06060; }
+.co-body { display: flex; flex-wrap: wrap; gap: 4px; }
+.chip {
+  font-size: 11px;
+  padding: 2px 7px;
+  border-radius: 3px;
+  border: 1px solid;
+}
+.chip.factory { background: #f0f4e8; border-color: #a0b070; color: #607040; }
+.chip.ship    { background: #e8f0f8; border-color: #7090b0; color: #405080; }
+
+.calc-bar {
+  padding: 12px 20px;
+  border-top: 1px solid var(--border);
+  background: var(--cream);
+  flex-shrink: 0;
+}
+.btn-calc {
+  width: 100%;
+  border: 1px solid var(--gold);
+  background: #fff;
+  color: var(--gold);
+  padding: 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  font-family: 'Sarabun', sans-serif;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.btn-calc:hover { background: rgba(184,150,62,.1); }
+
+/* ── Modal ── */
+.overlay {
+  display: none;
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,.4);
+  z-index: 999;
+  align-items: center;
+  justify-content: center;
+}
+.overlay.open { display: flex; }
+.modal {
+  background: var(--cream);
+  border-radius: 8px;
+  padding: 24px;
+  min-width: 340px;
+  max-width: 500px;
+  max-height: 80vh;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+}
+.modal h2 { font-size: 15px; color: var(--gold); margin-bottom: 16px; }
+.res-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(184,150,62,.25);
+  font-size: 13px;
+  gap: 12px;
+}
+.res-row:last-of-type { border-bottom: none; }
+.res-label { flex: 1; }
+.res-label strong { display: block; font-weight: 600; }
+.res-label small { font-size: 11px; color: #888; }
+.res-val { text-align: right; flex-shrink: 0; }
+.res-val strong { display: block; color: var(--gold); font-weight: 600; }
+.res-val small { font-size: 11px; color: #888; }
+.res-total {
+  display: flex;
+  justify-content: space-between;
+  padding: 10px 0 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--gold);
+  border-top: 2px solid var(--gold);
+  margin-top: 8px;
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">🌴</div>
+  <div class="title-block">
+    <h1>I N D O N E S I A</h1>
+    <p>คลิกแผนที่เพื่อเลือกพื้นที่ — Shipping &amp; Revenue Calculator</p>
+  </div>
+  <div class="header-btns">
+    <button class="btn-sm" onclick="openSettings()">ตั้งค่า</button>
+    <button class="btn-sm" onclick="confirmReset()">มอดพย์</button>
+  </div>
+</header>
+
+<div class="main">
+
+  <!-- ── Map panel ── -->
+  <div class="map-panel">
+    <div class="map-tabs">
+      <button class="map-tab active" onclick="setMode('factory',this)">🏭 โรงงาน</button>
+      <button class="map-tab" onclick="setMode('ship',this)">🚢 เรือ</button>
+      <button class="map-tab" onclick="setMode('city',this)">🏙 เมือง</button>
+      <button class="map-tab" onclick="setMode('view',this)">👁 ดู</button>
+    </div>
+    <div class="map-wrap">
+      <svg id="game-map" viewBox="0 0 400 280" xmlns="http://www.w3.org/2000/svg">
+        <!-- Ocean -->
+        <rect width="400" height="280" fill="#9dbdd4"/>
+        <!-- Sumatera -->
+        <path d="M28,26 L100,16 L118,52 L126,90 L122,148 L104,166 L86,169 L64,158 L46,128 L30,88 Z"
+              fill="#c4b878" stroke="#a09060" stroke-width="1.5" opacity=".9"/>
+        <!-- Java -->
+        <path d="M122,162 L276,154 L282,178 L280,186 L122,189 Z"
+              fill="#c4b878" stroke="#a09060" stroke-width="1.5" opacity=".9"/>
+        <!-- Borneo -->
+        <path d="M182,36 L292,30 L298,46 L303,132 L286,156 L248,159 L184,152 L178,78 Z"
+              fill="#c4b878" stroke="#a09060" stroke-width="1.5" opacity=".9"/>
+        <!-- Sulawesi -->
+        <path d="M290,66 L336,60 L342,78 L336,108 L326,128 L310,132 L296,122 L287,100 Z"
+              fill="#c4b878" stroke="#a09060" stroke-width="1.5" opacity=".9"/>
+        <!-- Papua -->
+        <path d="M348,57 L411,61 L412,132 L350,137 L339,103 Z"
+              fill="#c4b878" stroke="#a09060" stroke-width="1.5" opacity=".9"/>
+        <!-- Small islands -->
+        <ellipse cx="318" cy="142" rx="14" ry="8" fill="#c4b878" stroke="#a09060" stroke-width="1.5"/>
+        <ellipse cx="340" cy="156" rx="12" ry="6" fill="#c4b878" stroke="#a09060" stroke-width="1.5"/>
+        <ellipse cx="281" cy="163" rx="8"  ry="5" fill="#c4b878" stroke="#a09060" stroke-width="1.5"/>
+        <ellipse cx="168" cy="204" rx="20" ry="7" fill="#c4b878" stroke="#a09060" stroke-width="1.5"/>
+        <!-- Zones layer (filled by JS) -->
+        <g id="zones-layer"></g>
+      </svg>
+    </div>
+    <div class="map-footer">
+      <span class="map-hint">ดูแผนที่เลื่อน/ซูมได้</span>
+      <div class="zoom-col">
+        <button class="zoom-btn" onclick="zoomMap(1.25)">+</button>
+        <button class="zoom-btn" onclick="zoomMap(0.8)">−</button>
+        <button class="zoom-btn" onclick="resetView()" title="รีเซ็ตมุมมอง">⊞</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Calc panel ── -->
+  <div class="calc-panel">
+    <div class="player-bar">
+      <div class="bar-label">ผู้เล่น</div>
+      <div class="player-tabs" id="player-tabs"></div>
+    </div>
+
+    <div class="content-area">
+      <div class="inner-tabs">
+        <button class="inner-tab active" id="itab-company" onclick="switchInner('company')">บริษัท</button>
+        <button class="inner-tab" id="itab-city" onclick="switchInner('city')">เมือง</button>
+      </div>
+
+      <div id="pane-company" class="tab-pane">
+        <div class="mode-guide">
+          <em>Mode 🏭</em> คลิก land area ▸ กด "+ โรงงาน"<br>
+          <em>Mode 🚢</em> คลิก sea area ▸ กด "+ เรือ"
+        </div>
+
+        <div class="input-row">
+          <select id="goods-sel" class="goods-sel">
+            <option value="Rice:20">Rice (20฿)</option>
+            <option value="Rubber:30">Rubber (30฿)</option>
+            <option value="Tobacco:25">Tobacco (25฿)</option>
+            <option value="Spices:35">Spices (35฿)</option>
+            <option value="Sugar:20">Sugar (20฿)</option>
+            <option value="Oil:40">Oil (40฿)</option>
+            <option value="Cotton:22">Cotton (22฿)</option>
+          </select>
+          <button class="btn-add" onclick="addFactory()">+ โรงงาน</button>
+        </div>
+
+        <div class="input-row">
+          <input type="number" id="ship-cap" class="num-in" value="3" min="1" max="9">
+          <span class="cap-lbl">cap</span>
+          <div class="zone-disp" id="zone-disp">คลิกพื้นที่บนแผนที่</div>
+          <button class="btn-add" onclick="addShip()">+ เรือ</button>
+        </div>
+
+        <div id="co-list-wrap"></div>
+      </div>
+
+      <div id="pane-city" class="tab-pane" style="display:none">
+        <div id="city-wrap"><p class="empty-msg">ยังไม่มีข้อมูลเมือง</p></div>
+      </div>
+    </div>
+
+    <div class="calc-bar">
+      <button class="btn-calc" onclick="calcRoute()">⚡ คำนวณเส้นทาง</button>
+    </div>
+  </div>
+</div>
+
+<!-- Result modal -->
+<div class="overlay" id="overlay" onclick="closeOverlay(event)">
+  <div class="modal">
+    <h2>⚡ ผลการคำนวณเส้นทาง</h2>
+    <div id="modal-body"></div>
+    <button class="btn-sm" style="margin-top:16px;width:100%"
+            onclick="document.getElementById('overlay').classList.remove('open')">ปิด</button>
+  </div>
+</div>
+
+<script>
+// ── Zone data ────────────────────────────────────────────────────────────────
+// t: 'l' = land, 's' = sea
+const ZONES = [
+  // Sumatera (A)
+  {id:'A01',t:'l',x:46,y:46},{id:'A02',t:'l',x:61,y:38},{id:'A03',t:'l',x:77,y:30},
+  {id:'A04',t:'l',x:92,y:24},{id:'A05',t:'l',x:51,y:61},{id:'A06',t:'l',x:66,y:56},
+  {id:'A07',t:'l',x:56,y:76},{id:'A08',t:'l',x:71,y:69},{id:'A09',t:'l',x:67,y:85},
+  {id:'A10',t:'l',x:56,y:97},{id:'A11',t:'l',x:71,y:91},{id:'A12',t:'l',x:83,y:83},
+  {id:'A13',t:'l',x:87,y:97},{id:'A14',t:'l',x:97,y:101},{id:'A15',t:'l',x:81,y:109},
+  {id:'A16',t:'l',x:71,y:115},{id:'A17',t:'l',x:93,y:113},{id:'A18',t:'l',x:103,y:105},
+  {id:'A19',t:'l',x:90,y:91},{id:'A20',t:'l',x:101,y:93},{id:'A21',t:'l',x:75,y:129},
+  {id:'A22',t:'l',x:85,y:133},{id:'A23',t:'l',x:96,y:125},{id:'A24',t:'l',x:109,y:120},
+  {id:'A25',t:'l',x:117,y:111},{id:'A26',t:'l',x:81,y:69},{id:'A27',t:'l',x:111,y:96},
+  {id:'A28',t:'l',x:121,y:101},{id:'A29',t:'l',x:80,y:143},{id:'A30',t:'l',x:91,y:151},
+  {id:'A31',t:'l',x:117,y:123},{id:'A32',t:'l',x:125,y:114},{id:'A33',t:'l',x:126,y:127},
+  {id:'A34',t:'l',x:99,y:143},
+  // Java (B)
+  {id:'B01',t:'l',x:133,y:173},{id:'B02',t:'l',x:148,y:171},{id:'B03',t:'l',x:163,y:169},
+  {id:'B04',t:'l',x:176,y:171},{id:'B05',t:'l',x:190,y:171},{id:'B06',t:'l',x:201,y:173},
+  {id:'B07',t:'l',x:156,y:179},{id:'B08',t:'l',x:169,y:179},{id:'B09',t:'l',x:183,y:179},
+  {id:'B10',t:'l',x:197,y:181},{id:'B11',t:'l',x:211,y:176},{id:'B12',t:'l',x:225,y:176},
+  {id:'B13',t:'l',x:239,y:173},{id:'B14',t:'l',x:255,y:176},{id:'B15',t:'l',x:219,y:166},
+  {id:'B16',t:'l',x:233,y:164},{id:'B17',t:'l',x:247,y:164},{id:'B18',t:'l',x:259,y:168},
+  {id:'B19',t:'l',x:271,y:168},{id:'B20',t:'l',x:279,y:176},
+  // Borneo (C)
+  {id:'C01',t:'l',x:193,y:56},{id:'C02',t:'l',x:209,y:49},{id:'C03',t:'l',x:197,y:71},
+  {id:'C04',t:'l',x:217,y:66},{id:'C05',t:'l',x:231,y:53},{id:'C06',t:'l',x:233,y:89},
+  {id:'C07',t:'l',x:247,y:59},{id:'C08',t:'l',x:249,y:81},{id:'C09',t:'l',x:259,y:91},
+  {id:'C10',t:'l',x:241,y:99},{id:'C11',t:'l',x:223,y:89},{id:'C12',t:'l',x:261,y:76},
+  {id:'C13',t:'l',x:263,y:103},{id:'C14',t:'l',x:253,y:111},{id:'C15',t:'l',x:266,y:117},
+  {id:'C16',t:'l',x:273,y:89},{id:'C17',t:'l',x:273,y:121},{id:'C18',t:'l',x:279,y:105},
+  {id:'C19',t:'l',x:281,y:119},{id:'C20',t:'l',x:209,y:63},{id:'C21',t:'l',x:279,y:129},
+  {id:'C22',t:'l',x:269,y:133},{id:'C23',t:'l',x:256,y:136},{id:'C24',t:'l',x:249,y:131},
+  {id:'C25',t:'l',x:239,y:136},{id:'C26',t:'l',x:241,y:149},{id:'C27',t:'l',x:251,y:149},
+  {id:'C28',t:'l',x:259,y:141},{id:'C29',t:'l',x:263,y:149},{id:'C30',t:'l',x:219,y:79},
+  // Sulawesi (D)
+  {id:'D01',t:'l',x:297,y:79},{id:'D02',t:'l',x:307,y:73},{id:'D03',t:'l',x:317,y:73},
+  {id:'D04',t:'l',x:309,y:93},{id:'D05',t:'l',x:299,y:99},{id:'D06',t:'l',x:319,y:89},
+  {id:'D07',t:'l',x:319,y:107},{id:'D08',t:'l',x:313,y:117},{id:'D09',t:'l',x:307,y:123},
+  {id:'D10',t:'l',x:297,y:129},{id:'D11',t:'l',x:291,y:137},{id:'D12',t:'l',x:323,y:99},
+  {id:'D13',t:'l',x:329,y:113},
+  // Papua (E)
+  {id:'E01',t:'l',x:359,y:69},{id:'E02',t:'l',x:373,y:73},{id:'E03',t:'l',x:384,y:79},
+  {id:'E04',t:'l',x:361,y:89},{id:'E05',t:'l',x:373,y:89},{id:'E06',t:'l',x:356,y:101},
+  {id:'E07',t:'l',x:376,y:101},{id:'E08',t:'l',x:366,y:111},{id:'E09',t:'l',x:376,y:116},
+  {id:'E10',t:'l',x:356,y:83},{id:'E11',t:'l',x:356,y:116},{id:'E12',t:'l',x:383,y:109},
+  // Small islands (F)
+  {id:'F01',t:'l',x:327,y:138},{id:'F02',t:'l',x:337,y:123},{id:'F03',t:'l',x:341,y:134},
+  {id:'F04',t:'l',x:331,y:144},{id:'F05',t:'l',x:346,y:144},{id:'F06',t:'l',x:343,y:113},
+  {id:'F07',t:'l',x:353,y:129},
+  // Sea (S)
+  {id:'S01',t:'s',x:149,y:149},{id:'S02',t:'s',x:169,y:149},{id:'S03',t:'s',x:256,y:156},
+  {id:'S04',t:'s',x:206,y:155},{id:'S05',t:'s',x:88,y:133},{id:'S06',t:'s',x:283,y:139},
+  {id:'S07',t:'s',x:235,y:156},{id:'S08',t:'s',x:285,y:156},{id:'S09',t:'s',x:58,y:121},
+  {id:'S10',t:'s',x:305,y:155},{id:'S11',t:'s',x:323,y:149},{id:'S12',t:'s',x:192,y:149},
+  {id:'S13',t:'s',x:222,y:156},{id:'S14',t:'s',x:48,y:55},{id:'S15',t:'s',x:219,y:151},
+  {id:'S16',t:'s',x:235,y:149},{id:'S17',t:'s',x:232,y:153},{id:'S18',t:'s',x:285,y:149},
+  {id:'S19',t:'s',x:285,y:133},{id:'S20',t:'s',x:171,y:141},{id:'S21',t:'s',x:78,y:156},
+];
+
+const zoneMap = Object.fromEntries(ZONES.map(z => [z.id, z]));
+
+// ── State ────────────────────────────────────────────────────────────────────
+const S = {
+  mode: 'factory',
+  players: [{name: 'ผู้เล่น 1', companies: []}],
+  cur: 0,
+  sel: null,
+};
+
+// ── Map rendering ────────────────────────────────────────────────────────────
+function renderMap() {
+  const player = S.players[S.cur];
+  const factories = new Set();
+  const ships     = new Set();
+  player.companies.forEach(c => {
+    c.factories.forEach(f => factories.add(f.zone));
+    c.ships.forEach(sh => ships.add(sh.zone));
+  });
+
+  document.getElementById('zones-layer').innerHTML = ZONES.map(z => {
+    const land = z.t === 'l';
+    const isSel = S.sel === z.id;
+    const isF   = factories.has(z.id);
+    const isSh  = ships.has(z.id);
+
+    let fill   = land ? '#b8a870' : '#7ba7bc';
+    let stroke = land ? '#9a8858' : '#5a8aaa';
+    if (isF)   { fill = '#8fae55'; stroke = '#607038'; }
+    if (isSh)  { fill = '#5090c0'; stroke = '#305880'; }
+    if (isSel) { fill = land ? '#c8983a' : '#3a78aa'; stroke = '#7a5010'; }
+
+    const r = isSel ? 9 : 7;
+    const textFill = (isSel || isF || isSh) ? '#fff' : '#3a2a18';
+
+    return `<g data-id="${z.id}" onclick="clickZone('${z.id}')" style="cursor:pointer">
+      <circle cx="${z.x}" cy="${z.y}" r="${r}" fill="${fill}" stroke="${stroke}" stroke-width="1.2" opacity=".93"/>
+      <text x="${z.x}" y="${z.y+3.5}" text-anchor="middle" font-size="4.8"
+            fill="${textFill}" font-family="monospace" font-weight="${isSel?'bold':'normal'}">${z.id}</text>
+    </g>`;
+  }).join('');
+}
+
+// ── Zone click ───────────────────────────────────────────────────────────────
+function clickZone(id) {
+  if (S.mode === 'view') return;
+  const z = zoneMap[id];
+  if (S.mode === 'factory' && z.t !== 'l') { alert('Mode โรงงาน: เลือก land area เท่านั้น'); return; }
+  if (S.mode === 'ship'    && z.t !== 's') { alert('Mode เรือ: เลือก sea area เท่านั้น'); return; }
+
+  S.sel = (S.sel === id) ? null : id;
+  const disp = document.getElementById('zone-disp');
+  if (S.sel) {
+    disp.textContent = `${S.sel} (${z.t === 'l' ? 'land' : 'sea'})`;
+    disp.className = 'zone-disp sel';
+  } else {
+    disp.textContent = 'คลิกพื้นที่บนแผนที่';
+    disp.className = 'zone-disp';
+  }
+  renderMap();
+}
+
+// ── Mode ─────────────────────────────────────────────────────────────────────
+function setMode(mode, btn) {
+  S.mode = mode;
+  S.sel  = null;
+  const disp = document.getElementById('zone-disp');
+  disp.textContent = 'คลิกพื้นที่บนแผนที่';
+  disp.className   = 'zone-disp';
+  document.querySelectorAll('.map-tab').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderMap();
+}
+
+// ── Players ──────────────────────────────────────────────────────────────────
+function renderPlayers() {
+  document.getElementById('player-tabs').innerHTML =
+    S.players.map((p, i) =>
+      `<button class="player-tab${i === S.cur ? ' active' : ''}" onclick="selectPlayer(${i})">${p.name}</button>`
+    ).join('') +
+    `<button class="player-tab add" onclick="addPlayer()">+</button>`;
+}
+
+function selectPlayer(i) {
+  S.cur = i; S.sel = null;
+  renderPlayers(); renderCompanies(); renderMap();
+}
+
+function addPlayer() {
+  S.players.push({name: `ผู้เล่น ${S.players.length + 1}`, companies: []});
+  selectPlayer(S.players.length - 1);
+}
+
+// ── Companies ────────────────────────────────────────────────────────────────
+function addFactory() {
+  if (!S.sel) { alert('กรุณาคลิกเลือก land area บนแผนที่ก่อน'); return; }
+  if (zoneMap[S.sel].t !== 'l') { alert('ต้องเลือก land area สำหรับโรงงาน'); return; }
+
+  const [goods, price] = document.getElementById('goods-sel').value.split(':');
+  const player = S.players[S.cur];
+
+  let co = player.companies.find(c => c.goods === goods);
+  if (!co) {
+    co = {id: Date.now(), goods, price: +price, factories: [], ships: []};
+    player.companies.push(co);
+  }
+  if (co.factories.find(f => f.zone === S.sel)) { alert('โรงงานในพื้นที่นี้มีแล้ว'); return; }
+
+  co.factories.push({zone: S.sel});
+  clearSel(); renderCompanies(); renderMap();
+}
+
+function addShip() {
+  if (!S.sel) { alert('กรุณาคลิกเลือก sea area บนแผนที่ก่อน'); return; }
+  if (zoneMap[S.sel].t !== 's') { alert('ต้องเลือก sea area สำหรับเรือ'); return; }
+
+  const player = S.players[S.cur];
+  if (!player.companies.length) { alert('กรุณาเพิ่มโรงงานก่อน'); return; }
+
+  const cap = parseInt(document.getElementById('ship-cap').value) || 3;
+  const co  = player.companies[player.companies.length - 1];
+  if (co.ships.find(s => s.zone === S.sel)) { alert('เรือในพื้นที่นี้มีแล้ว'); return; }
+
+  co.ships.push({zone: S.sel, cap});
+  clearSel(); renderCompanies(); renderMap();
+}
+
+function clearSel() {
+  S.sel = null;
+  const disp = document.getElementById('zone-disp');
+  disp.textContent = 'คลิกพื้นที่บนแผนที่';
+  disp.className   = 'zone-disp';
+}
+
+function deleteCompany(id) {
+  S.players[S.cur].companies = S.players[S.cur].companies.filter(c => c.id !== id);
+  renderCompanies(); renderMap();
+}
+
+function renderCompanies() {
+  const cos  = S.players[S.cur].companies;
+  const wrap = document.getElementById('co-list-wrap');
+  if (!cos.length) { wrap.innerHTML = '<p class="empty-msg">ยังไม่มีบริษัท</p>'; return; }
+
+  wrap.innerHTML = '<div class="co-list">' + cos.map(co => {
+    const fc = co.factories.map(f => `<span class="chip factory">🏭 ${f.zone}</span>`).join('');
+    const sc = co.ships.map(s => `<span class="chip ship">🚢 ${s.zone} (${s.cap})</span>`).join('');
+    return `<div class="co-card">
+      <div class="co-head">
+        <span class="co-name">${co.goods} (${co.price}฿)</span>
+        <button class="co-del" onclick="deleteCompany(${co.id})">×</button>
+      </div>
+      <div class="co-body">${fc}${sc}
+        ${!fc && !sc ? '<span style="color:#aaa;font-size:11px">ยังไม่มีข้อมูล</span>' : ''}
+      </div>
+    </div>`;
+  }).join('') + '</div>';
+}
+
+// ── Inner tabs ───────────────────────────────────────────────────────────────
+function switchInner(tab) {
+  document.getElementById('pane-company').style.display = tab === 'company' ? '' : 'none';
+  document.getElementById('pane-city').style.display    = tab === 'city'    ? '' : 'none';
+  document.getElementById('itab-company').classList.toggle('active', tab === 'company');
+  document.getElementById('itab-city').classList.toggle('active',    tab === 'city');
+}
+
+// ── Route calculation ────────────────────────────────────────────────────────
+function calcRoute() {
+  const rows = [];
+  S.players.forEach(player => {
+    player.companies.forEach(co => {
+      if (!co.factories.length || !co.ships.length) return;
+      const totalCap = co.ships.reduce((s, sh) => s + sh.cap, 0);
+      rows.push({
+        player:   player.name,
+        goods:    co.goods,
+        price:    co.price,
+        factories: co.factories.map(f => f.zone).join(', '),
+        ships:    co.ships.map(s => `${s.zone}(${s.cap})`).join(', '),
+        cap:      totalCap,
+        revenue:  co.price * totalCap,
+      });
+    });
+  });
+
+  const body = document.getElementById('modal-body');
+  if (!rows.length) {
+    body.innerHTML = '<p style="color:#aaa;font-size:13px;padding:8px 0">ยังไม่มีข้อมูลสำหรับคำนวณ<br>กรุณาเพิ่มโรงงานและเรือก่อน</p>';
+  } else {
+    const total = rows.reduce((s, r) => s + r.revenue, 0);
+    body.innerHTML =
+      rows.map(r => `<div class="res-row">
+        <div class="res-label">
+          <strong>${r.goods} — ${r.player}</strong>
+          <small>โรงงาน: ${r.factories} | เรือ: ${r.ships}</small>
+        </div>
+        <div class="res-val">
+          <strong>${r.revenue.toLocaleString()}฿</strong>
+          <small>${r.price}฿ × ${r.cap} cap</small>
+        </div>
+      </div>`).join('') +
+      `<div class="res-total"><span>รวมทั้งหมด</span><span>${total.toLocaleString()}฿</span></div>`;
+  }
+  document.getElementById('overlay').classList.add('open');
+}
+
+function closeOverlay(e) {
+  if (e.target === document.getElementById('overlay'))
+    document.getElementById('overlay').classList.remove('open');
+}
+
+// ── Zoom / pan ───────────────────────────────────────────────────────────────
+function zoomMap(f) {
+  const vb = document.getElementById('game-map').viewBox.baseVal;
+  const cx = vb.x + vb.width / 2, cy = vb.y + vb.height / 2;
+  const nw = vb.width * f, nh = vb.height * f;
+  document.getElementById('game-map').setAttribute('viewBox', `${cx-nw/2} ${cy-nh/2} ${nw} ${nh}`);
+}
+function resetView() {
+  document.getElementById('game-map').setAttribute('viewBox', '0 0 400 280');
+}
+
+// pan support
+let _drag = null;
+const svg = document.getElementById('game-map');
+svg.addEventListener('mousedown', e => {
+  if (e.target.closest('[data-id]')) return;
+  _drag = {x: e.clientX, y: e.clientY,
+           vb: {...svg.viewBox.baseVal}};
+  svg.style.cursor = 'grabbing';
+});
+window.addEventListener('mousemove', e => {
+  if (!_drag) return;
+  const scale = _drag.vb.width / svg.getBoundingClientRect().width;
+  const dx = (e.clientX - _drag.x) * scale;
+  const dy = (e.clientY - _drag.y) * scale;
+  svg.setAttribute('viewBox', `${_drag.vb.x-dx} ${_drag.vb.y-dy} ${_drag.vb.width} ${_drag.vb.height}`);
+});
+window.addEventListener('mouseup', () => { _drag = null; svg.style.cursor = 'crosshair'; });
+svg.addEventListener('wheel', e => {
+  e.preventDefault();
+  zoomMap(e.deltaY > 0 ? 1.15 : 0.87);
+}, {passive: false});
+
+// ── Settings / reset ─────────────────────────────────────────────────────────
+function openSettings() {
+  const n = prompt('จำนวนผู้เล่น (1-6):', S.players.length);
+  if (!n) return;
+  const count = Math.min(6, Math.max(1, parseInt(n) || 1));
+  while (S.players.length < count)
+    S.players.push({name: `ผู้เล่น ${S.players.length + 1}`, companies: []});
+  if (S.players.length > count) S.players.length = count;
+  if (S.cur >= S.players.length) S.cur = S.players.length - 1;
+  renderPlayers(); renderCompanies(); renderMap();
+}
+
+function confirmReset() {
+  if (confirm('รีเซ็ตข้อมูลทั้งหมด?')) {
+    S.players = [{name: 'ผู้เล่น 1', companies: []}];
+    S.cur = 0; S.sel = null;
+    renderPlayers(); renderCompanies(); renderMap();
+  }
+}
+
+// ── Init ─────────────────────────────────────────────────────────────────────
+renderPlayers();
+renderCompanies();
+renderMap();
+</script>
+</body>
+</html>

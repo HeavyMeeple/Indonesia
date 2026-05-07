@@ -44,7 +44,8 @@ header p{font-size:11px;color:var(--td);font-style:italic;}
 .city-mk circle{fill-opacity:0.65;stroke-width:1.5;}
 .city-mk text{font-size:9px;font-family:'Cinzel',serif;text-anchor:middle;dominant-baseline:hanging;pointer-events:none;}
 .city-mk:hover circle{fill-opacity:0.9;}
-/* MAP POPUP */
+.ld.sel-pending circle{fill:#ff804060;stroke:#ff8040;stroke-width:1.5;}
+#selBar{display:none;position:absolute;bottom:44px;left:50%;transform:translateX(-50%);z-index:20;background:var(--s1);border:1px solid var(--gold);padding:6px 10px;display:none;align-items:center;gap:8px;white-space:nowrap;box-shadow:0 2px 12px rgba(0,0,0,.5);}
 #mapPop{position:absolute;z-index:50;background:var(--s1);border:1px solid var(--b2);min-width:210px;box-shadow:0 4px 20px rgba(0,0,0,.6);display:none;}
 .pop-hdr{display:flex;align-items:center;justify-content:space-between;padding:6px 10px;border-bottom:1px solid var(--b1);font-family:'Cinzel',serif;font-size:9px;letter-spacing:2px;color:var(--gold);}
 .pop-x{background:transparent;border:none;color:var(--tm);cursor:pointer;font-size:14px;padding:0;line-height:1;}
@@ -155,6 +156,11 @@ select option{background:var(--bg);}
   <!-- MAP PANEL -->
   <div class="map-panel">
     <div id="mapPop"></div>
+    <div id="selBar">
+      <span id="selCount" style="font-family:'Cinzel',serif;font-size:9px;color:var(--gold);letter-spacing:1px;"></span>
+      <button class="btn bg" style="padding:3px 8px;font-size:8px;" onclick="clearSelLand()">✕ Clear</button>
+      <button class="btn bp" style="padding:3px 8px;font-size:8px;" onclick="event.stopPropagation();assignFactory()">🏭 Assign Factory</button>
+    </div>
     <div class="map-scroll" id="mapScroll">
       <svg id="mapSvg" xmlns="http://www.w3.org/2000/svg"></svg>
     </div>
@@ -243,7 +249,7 @@ const PLAYER_COLORS=['#38a046','#3a7fc8','#e8c814','#8c2090','#e87020'];
 
 let players=PLAYER_COLORS.map((c,i)=>({id:'p'+(i+1),name:'Player '+(i+1),color:c,companies:[]}));
 let pid='p1', cities=[];
-let selSea=new Set();
+let selLand=new Set(), selSea=new Set();
 let scale=0.38;
 let nco=1, ncity=1, nsub='co';
 
@@ -301,52 +307,68 @@ function showLandPop(id,e){
   const existFact=players.flatMap(p=>p.companies
     .filter(co=>co.type==='Production'&&co.landAreas.includes(id))
     .map(co=>({...co,player:p})))[0];
-  const goodOpts=Object.keys(GOOD_REV).map(g=>`<option value="${g}">${g} (+${GOOD_REV[g]}฿)</option>`).join('');
-  const plyrOpts=players.map(p=>`<option value="${p.id}" ${p.id===pid?'selected':''}>${p.name}</option>`).join('');
-  let body=`<div class="pop-hdr"><span>${id}</span><button class="pop-x" onclick="closePop()">✕</button></div>`;
-  if(existCity){
-    const col=CITY_COLOR[existCity.level];
-    body+=`<div class="pop-sec">🏙️ City</div><div class="pop-row"><span style="color:${col};font-family:'Cinzel',serif;font-size:9px;">Lv.${existCity.level} — ${existCity.cityName}</span><button class="btn bg" style="margin-left:auto;" onclick="delCity('${existCity.id}')">Remove</button></div>`;
-  } else if(existFact){
-    const pc=existFact.player.color;
-    body+=`<div class="pop-sec">🏭 Factory</div><div class="pop-row"><span style="font-family:'Cinzel',serif;font-size:9px;"><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${pc};margin-right:4px;"></span>${existFact.good} · ${existFact.player.name}</span><button class="btn bg" style="margin-left:auto;" onclick="delCo('${existFact.id}')">Remove</button></div>`;
-  } else {
-    body+=`<div class="pop-sec">🏙️ City</div>
-<div class="pop-row">
-  <select id="popLv"><option value="1">Lv.1 🟡</option><option value="2">Lv.2 🟢</option><option value="3">Lv.3 🔴</option></select>
-  <button class="btn bp" onclick="popCity('${id}')">Place</button>
-</div>
-<div class="pop-sec">🏭 Factory</div>
-<div class="pop-row">
-  <select id="popGood">${goodOpts}</select>
-  <select id="popPlyr">${plyrOpts}</select>
-  <button class="btn bp" onclick="popFactory('${id}')">Place</button>
-</div>`;
+  // Occupied area → show info popup
+  if(existCity||existFact){
+    let body=`<div class="pop-hdr"><span>${id}</span><button class="pop-x" onclick="closePop()">✕</button></div>`;
+    if(existCity){
+      const col=CITY_COLOR[existCity.level];
+      body+=`<div class="pop-sec">🏙️ City</div><div class="pop-row"><span style="color:${col};font-family:'Cinzel',serif;font-size:9px;">Lv.${existCity.level} — ${existCity.cityName}</span><button class="btn bg" style="margin-left:auto;" onclick="delCity('${existCity.id}')">Remove</button></div>`;
+    } else {
+      const pc=existFact.player.color;
+      body+=`<div class="pop-sec">🏭 Factory</div><div class="pop-row"><span style="font-family:'Cinzel',serif;font-size:9px;"><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${pc};margin-right:4px;"></span>${existFact.good} · ${existFact.player.name}</span><button class="btn bg" style="margin-left:auto;" onclick="delCo('${existFact.id}')">Remove</button></div>`;
+    }
+    const pop=document.getElementById('mapPop');
+    pop.innerHTML=body; pop.style.display='block';
+    const panel=document.querySelector('.map-panel'), pr=panel.getBoundingClientRect();
+    let x=e.clientX-pr.left+10, y=e.clientY-pr.top+10;
+    pop.style.left=x+'px'; pop.style.top=y+'px';
+    setTimeout(()=>{const pw=panel.offsetWidth,ph=panel.offsetHeight;if(x+pop.offsetWidth>pw-8)x=pw-pop.offsetWidth-8;if(y+pop.offsetHeight>ph-8)y=ph-pop.offsetHeight-8;pop.style.left=Math.max(8,x)+'px';pop.style.top=Math.max(8,y)+'px';},0);
+    return;
   }
-  const pop=document.getElementById('mapPop');
-  pop.innerHTML=body; pop.style.display='block';
-  const panel=document.querySelector('.map-panel');
-  const pr=panel.getBoundingClientRect();
-  let x=e.clientX-pr.left+10, y=e.clientY-pr.top+10;
-  pop.style.left=x+'px'; pop.style.top=y+'px';
-  setTimeout(()=>{
-    const pw=panel.offsetWidth,ph=panel.offsetHeight;
-    if(x+pop.offsetWidth>pw-8)x=pw-pop.offsetWidth-8;
-    if(y+pop.offsetHeight>ph-8)y=ph-pop.offsetHeight-8;
-    pop.style.left=Math.max(8,x)+'px'; pop.style.top=Math.max(8,y)+'px';
-  },0);
+  // Empty area → tap to toggle selection, show city popup only if nothing selected
+  if(selLand.has(id)) selLand.delete(id); else selLand.add(id);
+  refreshDots(); updateSelBar();
+  // If tapping first area with nothing selected yet, also offer city placement
+  if(selLand.has(id)&&selLand.size===1){
+    const pop=document.getElementById('mapPop');
+    const panel=document.querySelector('.map-panel'), pr=panel.getBoundingClientRect();
+    let x=e.clientX-pr.left+10, y=e.clientY-pr.top+10;
+    pop.innerHTML=`<div class="pop-hdr"><span>${id}</span><button class="pop-x" onclick="closePop()">✕</button></div><div class="pop-sec">🏙️ City</div><div class="pop-row"><select id="popLv"><option value="1">Lv.1 🟡</option><option value="2">Lv.2 🟢</option><option value="3">Lv.3 🔴</option></select><button class="btn bp" onclick="popCity('${id}')">Place</button></div>`;
+    pop.style.display='block'; pop.style.left=x+'px'; pop.style.top=y+'px';
+    setTimeout(()=>{const pw=panel.offsetWidth,ph=panel.offsetHeight;if(x+pop.offsetWidth>pw-8)x=pw-pop.offsetWidth-8;if(y+pop.offsetHeight>ph-8)y=ph-pop.offsetHeight-8;pop.style.left=Math.max(8,x)+'px';pop.style.top=Math.max(8,y)+'px';},0);
+  } else { closePop(); }
 }
 function closePop(){document.getElementById('mapPop').style.display='none';}
 function popCity(id){
   const lv=parseInt(document.getElementById('popLv').value)||1;
+  selLand.delete(id); updateSelBar();
   placeCity(id,lv); closePop();
 }
-function popFactory(id){
+function assignFactory(){
+  if(!selLand.size)return;
+  const goodOpts=Object.keys(GOOD_REV).map(g=>`<option value="${g}">${g} (+${GOOD_REV[g]}฿)</option>`).join('');
+  const plyrOpts=players.map(p=>`<option value="${p.id}" ${p.id===pid?'selected':''}>${p.name}</option>`).join('');
+  const ids=[...selLand].sort().join(', ');
+  const pop=document.getElementById('mapPop');
+  pop.innerHTML=`<div class="pop-hdr"><span>${selLand.size} area${selLand.size>1?'s':''} selected</span><button class="pop-x" onclick="closePop()">✕</button></div><div class="pop-sec" style="font-size:8px;color:var(--td);padding:4px 10px;">${ids}</div><div class="pop-sec">🏭 Factory</div><div class="pop-row"><select id="popGood">${goodOpts}</select><select id="popPlyr">${plyrOpts}</select><button class="btn bp" onclick="confirmFactory()">Place</button></div>`;
+  pop.style.display='block';
+  const panel=document.querySelector('.map-panel');
+  setTimeout(()=>{pop.style.left=Math.max(8,(panel.offsetWidth-pop.offsetWidth)/2)+'px';pop.style.top='60px';},0);
+}
+function confirmFactory(){
   const good=document.getElementById('popGood').value;
   const playerId=document.getElementById('popPlyr').value;
   const player=players.find(p=>p.id===playerId);
-  player.companies.push({id:'co'+nco++,name:good+' #'+(nco-1),type:'Production',good,landAreas:[id],ownerId:playerId});
-  selectPlayer(playerId); renderCoList(); refreshDots(); closePop();
+  player.companies.push({id:'co'+nco++,name:good+' #'+(nco-1),type:'Production',good,landAreas:[...selLand].sort(),ownerId:playerId});
+  selLand.clear(); updateSelBar();
+  selectPlayer(playerId); refreshDots(); closePop();
+}
+function clearSelLand(){selLand.clear();refreshDots();updateSelBar();}
+function updateSelBar(){
+  const bar=document.getElementById('selBar');
+  if(!selLand.size){bar.style.display='none';return;}
+  document.getElementById('selCount').textContent=selLand.size+' area'+(selLand.size>1?'s':'')+' selected';
+  bar.style.display='flex';
 }
 function delCity(id){cities=cities.filter(c=>c.id!==id);renderCityMarkers();renderCityList();refreshDots();closePop();}
 function toggleSea(id){
@@ -368,6 +390,7 @@ function refreshDots(){
         }
       }
     }
+    if(selLand.has(id)){g.className.baseVal='ld sel-pending';c.style.fill='';c.style.stroke='';}
     if(cities.some(ct=>ct.areaId===id))g.className.baseVal+=' sel-city';
   });
   // Sea: highlight selected route + existing ships

@@ -148,8 +148,9 @@ select option{background:var(--bg);}
     <p>คลิกแผนที่เพื่อเลือกพื้นที่ — Shipping & Revenue Calculator</p>
   </div>
   <div style="margin-left:auto;display:flex;gap:5px;">
-    <button class="hdrbtn active" id="hSetup" onclick="mainTab('setup')">ตั้งค่า</button>
-    <button class="hdrbtn" id="hResults" onclick="mainTab('results')">ผลลัพธ์</button>
+    <button class="hdrbtn" id="hMap" onclick="mainTab('map')">🗺 แผนที่</button>
+    <button class="hdrbtn active" id="hSetup" onclick="mainTab('setup')">⚙ ตั้งค่า</button>
+    <button class="hdrbtn" id="hResults" onclick="mainTab('results')">📊 ผลลัพธ์</button>
   </div>
 </header>
 <div class="main">
@@ -508,9 +509,13 @@ function renderCityList(){
 // TAB SWITCHING
 function subTab(t,btn){nsub=t;document.querySelectorAll('.xtab').forEach(x=>x.classList.remove('active'));btn.classList.add('active');document.getElementById('sub-co').style.display=t==='co'?'block':'none';document.getElementById('sub-city').style.display=t==='city'?'block':'none';if(t==='city')renderCityList();}
 function mainTab(t){
+  const mp=document.querySelector('.map-panel');
+  const rp=document.querySelector('.rpanel');
+  mp.style.display=t==='map'?'flex':'';
+  rp.style.display=t==='map'?'none':'';
   document.getElementById('panelSetup').style.display=t==='setup'?'block':'none';
   document.getElementById('panelResults').style.display=t==='results'?'block':'none';
-  ['Setup','Results'].forEach(x=>{const b=document.getElementById('h'+x);b.className='hdrbtn'+(x.toLowerCase()===t?' active':'');});
+  ['Map','Setup','Results'].forEach(x=>{const b=document.getElementById('h'+x);b.className='hdrbtn'+(x.toLowerCase()===t?' active':'');});
 }
 
 // SOLVER

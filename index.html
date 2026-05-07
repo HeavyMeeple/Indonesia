@@ -64,12 +64,6 @@ header p{font-size:11px;color:var(--td);font-style:italic;}
 .sec{margin-bottom:12px;}
 .sec-t{font-family:'Cinzel',serif;font-size:9px;letter-spacing:3px;color:var(--gold);text-transform:uppercase;margin-bottom:6px;display:flex;align-items:center;gap:5px;}
 .sec-t::after{content:'';flex:1;height:1px;background:var(--b1);}
-.ptabs{display:flex;flex-wrap:wrap;gap:3px;margin-bottom:8px;}
-.ptab{padding:3px 8px;border:1px solid var(--b2);background:transparent;color:var(--tm);font-family:'Cinzel',serif;font-size:8px;letter-spacing:1.5px;cursor:pointer;transition:all .1s;}
-.ptab:hover{border-color:var(--gdim);color:var(--text);}
-.ptab.active{background:var(--gold);border-color:var(--gold);color:var(--bg);}
-.addpbtn{padding:3px 7px;border:1px dashed var(--b2);background:transparent;color:var(--tm);cursor:pointer;font-size:13px;transition:all .1s;}
-.addpbtn:hover{border-color:var(--gdim);color:var(--gold);}
 .tabstrip{display:flex;border-bottom:1px solid var(--b1);margin-bottom:8px;}
 .xtab{padding:4px 10px;background:transparent;border:none;border-bottom:2px solid transparent;color:var(--tm);cursor:pointer;font-family:'Cinzel',serif;font-size:8px;letter-spacing:2px;text-transform:uppercase;transition:all .1s;margin-bottom:-1px;}
 .xtab:hover{color:var(--td);}
@@ -179,8 +173,14 @@ select option{background:var(--bg);}
       <!-- SETUP -->
       <div id="panelSetup">
         <div class="sec">
-          <div class="sec-t">Players</div>
-          <div class="ptabs" id="ptabs"></div>
+          <div class="sec-t">Player</div>
+          <select id="playerSelect" onchange="selectPlayer(this.value)">
+            <option value="p1">Player 1</option>
+            <option value="p2">Player 2</option>
+            <option value="p3">Player 3</option>
+            <option value="p4">Player 4</option>
+            <option value="p5">Player 5</option>
+          </select>
         </div>
         <div class="tabstrip">
           <button class="xtab active" onclick="subTab('co',this)">Companies</button>
@@ -280,11 +280,11 @@ const LAND2SEA={};
 for(const[s,a]of Object.entries(SEA_ADJ))for(const l of a.land){if(!LAND2SEA[l])LAND2SEA[l]=[];LAND2SEA[l].push(s);}
 const PCOLORS=['#c9943a','#4080c0','#c04030','#40a040','#8040c0','#c08040'];
 
-let players=[{id:'p1',name:'Player 1',color:PCOLORS[0],companies:[]},{id:'p2',name:'Player 2',color:PCOLORS[1],companies:[]}];
+let players=PCOLORS.slice(0,5).map((c,i)=>({id:'p'+(i+1),name:'Player '+(i+1),color:c,companies:[]}));
 let pid='p1', cities=[], mode='view';
 let selLand=new Set(), selSea=new Set();
 let scale=0.38;
-let nco=1, ncity=1, npid=3, nsub='co';
+let nco=1, ncity=1, nsub='co';
 
 // SVG refs
 let svg,landG,seaG,cityG,lineG;
@@ -426,23 +426,8 @@ function renderCityMarkers(){
   }
 }
 
-// PLAYER TABS
-function renderPTabs(){
-  const el=document.getElementById('ptabs'); el.innerHTML='';
-  for(const p of players){
-    const b=document.createElement('button');b.className='ptab'+(p.id===pid?' active':'');
-    b.innerHTML=`<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:${p.color};margin-right:4px;"></span>${p.name}`;
-    b.onclick=()=>{pid=p.id;renderPTabs();renderCoList();refreshDots();};
-    el.appendChild(b);
-  }
-  const ab=document.createElement('button');ab.className='addpbtn';ab.textContent='+';
-  ab.onclick=()=>{
-    const i=players.length;
-    players.push({id:'p'+npid++,name:'Player '+(i+1),color:PCOLORS[i%PCOLORS.length],companies:[]});
-    pid=players[players.length-1].id;renderPTabs();renderCoList();
-  };
-  el.appendChild(ab);
-}
+// PLAYER SELECT
+function selectPlayer(id){pid=id;renderCoList();refreshDots();}
 
 // COMPANIES
 function addFactory(){
@@ -682,7 +667,7 @@ function calculate(){
   drawLines(prs);
 }
 
-window.addEventListener('load',()=>{initMap();renderPTabs();renderCoList();setMode('view');mainTab('setup');});
+window.addEventListener('load',()=>{initMap();renderCoList();setMode('view');mainTab('setup');});
 window.addEventListener('resize',fitMap);
 </script>
 </body>

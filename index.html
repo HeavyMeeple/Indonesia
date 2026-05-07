@@ -44,12 +44,14 @@ header p{font-size:11px;color:var(--td);font-style:italic;}
 .city-mk circle{fill-opacity:0.65;stroke-width:1.5;}
 .city-mk text{font-size:9px;font-family:'Cinzel',serif;text-anchor:middle;dominant-baseline:hanging;pointer-events:none;}
 .city-mk:hover circle{fill-opacity:0.9;}
-/* MODE BAR */
-.modebar{position:absolute;top:8px;left:8px;display:flex;gap:5px;z-index:10;}
-.mbtn{padding:5px 10px;border:1px solid var(--b2);background:var(--bg);color:var(--td);font-family:'Cinzel',serif;font-size:8px;letter-spacing:1.5px;cursor:pointer;transition:all .12s;}
-.mbtn:hover{border-color:var(--gdim);color:var(--text);}
-.mbtn.active{border-color:var(--gold);color:var(--gold);background:rgba(201,148,58,.1);}
-.hint{position:absolute;bottom:8px;left:8px;background:rgba(0,0,0,.75);padding:3px 8px;font-size:10px;color:var(--td);font-style:italic;border:1px solid var(--b1);pointer-events:none;}
+/* MAP POPUP */
+#mapPop{position:absolute;z-index:50;background:var(--s1);border:1px solid var(--b2);min-width:210px;box-shadow:0 4px 20px rgba(0,0,0,.6);display:none;}
+.pop-hdr{display:flex;align-items:center;justify-content:space-between;padding:6px 10px;border-bottom:1px solid var(--b1);font-family:'Cinzel',serif;font-size:9px;letter-spacing:2px;color:var(--gold);}
+.pop-x{background:transparent;border:none;color:var(--tm);cursor:pointer;font-size:14px;padding:0;line-height:1;}
+.pop-x:hover{color:var(--red);}
+.pop-sec{font-size:8px;letter-spacing:2px;color:var(--td);text-transform:uppercase;padding:6px 10px 3px;border-top:1px solid var(--b1);}
+.pop-row{display:flex;align-items:center;gap:5px;padding:4px 10px 8px;}
+.pop-row select{flex:1;}
 .zoom-btns{position:absolute;bottom:8px;right:8px;display:flex;flex-direction:column;gap:3px;}
 .zbtn{width:26px;height:26px;border:1px solid var(--b2);background:var(--s1);color:var(--td);cursor:pointer;font-size:14px;line-height:24px;text-align:center;transition:all .1s;}
 .zbtn:hover{border-color:var(--gdim);color:var(--gold);}
@@ -146,16 +148,10 @@ select option{background:var(--bg);}
 <div class="main">
   <!-- MAP PANEL -->
   <div class="map-panel">
-    <div class="modebar">
-      <button class="mbtn" id="mFactory" onclick="setMode('factory')">🏭 Factory</button>
-      <button class="mbtn" id="mSea" onclick="setMode('sea')">🌊 Ship</button>
-      <button class="mbtn" id="mCity" onclick="setMode('city')">🏙️ City</button>
-      <button class="mbtn active" id="mView" onclick="setMode('view')">👁 View</button>
-    </div>
+    <div id="mapPop"></div>
     <div class="map-scroll" id="mapScroll">
       <svg id="mapSvg" xmlns="http://www.w3.org/2000/svg"></svg>
     </div>
-    <div class="hint" id="hint">Select a mode then click on the map</div>
     <div class="zoom-btns">
       <button class="zbtn" onclick="zoom(1.3)">+</button>
       <button class="zbtn" onclick="zoom(0.77)">−</button>
@@ -183,40 +179,22 @@ select option{background:var(--bg);}
         </div>
         <!-- Companies sub -->
         <div id="sub-co">
-          <div class="notice">Mode 🏭 → click land area ▸ press "+ Factory"<br>Mode 🌊 → click sea area ▸ press "+ Ship"</div>
-          <div style="display:flex;gap:5px;margin-bottom:6px;align-items:center;">
-            <select id="quickGood" style="flex:1;">
-              <option value="Rice">Rice (20฿)</option>
-              <option value="Spice">Spice (25฿)</option>
-              <option value="Rubber">Rubber (30฿)</option>
-              <option value="SiapSaji">SiapSaji (35฿)</option>
-              <option value="Oil">Oil (40฿)</option>
-            </select>
-            <button class="btn bp" onclick="addFactory()">+ Factory</button>
-          </div>
+          <div class="notice">Click land area on map to place factory or city<br>Click sea area to add/remove from ship route</div>
           <div style="display:flex;gap:5px;margin-bottom:8px;align-items:center;">
             <input type="number" id="shipCap" value="3" min="1" max="15" style="width:50px;"/>
-            <span style="font-size:10px;color:var(--td);">cap</span>
+            <span style="font-size:10px;color:var(--td);">cap/area</span>
             <button class="btn" style="border-color:#4060a0;color:#6090c0;flex:1;" onclick="addShip()">+ Ship</button>
           </div>
-          <!-- Selected display -->
+          <!-- Ship route display -->
           <div id="selDisplay" style="display:none;margin-bottom:8px;">
-            <div style="font-size:9px;color:var(--tm);letter-spacing:1px;text-transform:uppercase;margin-bottom:3px;">Selected (click to remove)</div>
+            <div style="font-size:9px;color:var(--tm);letter-spacing:1px;text-transform:uppercase;margin-bottom:3px;">Ship route (click to remove)</div>
             <div class="chips" id="selChips"></div>
           </div>
           <div id="coList"></div>
         </div>
         <!-- Cities sub -->
         <div id="sub-city" style="display:none;">
-          <div class="frow" style="margin-bottom:6px;">
-            <label>City Level</label>
-            <select id="cityLevel">
-              <option value="1">Level 1 — 1 of each good (🟡)</option>
-              <option value="2">Level 2 — 2 of each good (🟢)</option>
-              <option value="3">Level 3 — 3 of each good (🔴)</option>
-            </select>
-          </div>
-          <div class="notice">Mode 🏙️ → click land area to place a city</div>
+          <div class="notice">Click land area on map to place a city</div>
           <div id="cityList"></div>
         </div>
       </div>
@@ -266,8 +244,8 @@ for(const[s,a]of Object.entries(SEA_ADJ))for(const l of a.land){if(!LAND2SEA[l])
 const PCOLORS=['#c9943a','#4080c0','#c04030','#40a040','#8040c0','#c08040'];
 
 let players=PCOLORS.slice(0,5).map((c,i)=>({id:'p'+(i+1),name:'Player '+(i+1),color:c,companies:[]}));
-let pid='p1', cities=[], mode='view';
-let selLand=new Set(), selSea=new Set();
+let pid='p1', cities=[];
+let selSea=new Set();
 let scale=0.38;
 let nco=1, ncity=1, nsub='co';
 
@@ -290,7 +268,7 @@ function initMap(){
   // land nodes
   for(const[id,p]of Object.entries(LAND_POS)){
     const g=svgEl('g'); g.className.baseVal='ld'; g.dataset.id=id;
-    g.onclick=()=>onLand(id);
+    g.onclick=(e)=>{e.stopPropagation();showLandPop(id,e);};
     const c=svgEl('circle');
     c.setAttribute('cx',p.x);c.setAttribute('cy',p.y);c.setAttribute('r',11);
     const t=svgEl('text');
@@ -300,7 +278,7 @@ function initMap(){
   // sea nodes
   for(const[id,p]of Object.entries(SEA_POS)){
     const g=svgEl('g'); g.className.baseVal='sd'; g.dataset.id=id;
-    g.onclick=()=>onSea(id);
+    g.onclick=(e)=>{e.stopPropagation();toggleSea(id);};
     const c=svgEl('circle');
     c.setAttribute('cx',p.x);c.setAttribute('cy',p.y);c.setAttribute('r',22);
     const t=svgEl('text');
@@ -319,83 +297,97 @@ function fitMap(){
 function zoom(f){scale=Math.max(0.12,Math.min(2.8,scale*f));applyScale();}
 function applyScale(){svg.setAttribute('width',NW*scale);svg.setAttribute('height',NH*scale);}
 
-// MODE
-const HINTS={factory:'Click land area (white) to select factory location',sea:'Click sea area (blue S01-S21) to select ship route',city:'Click land area to place a city',view:'View map — scroll/zoom to navigate'};
-function setMode(m){
-  mode=m;
-  ['factory','sea','city','view'].forEach(x=>{
-    const b=document.getElementById('m'+x.charAt(0).toUpperCase()+x.slice(1));
-    if(b)b.className='mbtn'+(x===m?' active':'');
-  });
-  document.getElementById('hint').textContent=HINTS[m]||'';
-}
-function onLand(id){
-  if(mode==='factory'){
-    if(cities.some(ct=>ct.areaId===id)){alert('Area '+id+' already has a city');return;}
-    if(selLand.has(id))selLand.delete(id); else selLand.add(id);
-    refreshDots(); refreshSelDisplay();
-  } else if(mode==='city'){
-    if(cities.some(ct=>ct.areaId===id)){alert('Area '+id+' already has a city');return;}
-    const hasFactory=players.some(p=>p.companies.some(co=>co.type==='Production'&&co.landAreas.includes(id)));
-    if(hasFactory){alert('Area '+id+' already has a factory');return;}
-    placeCity(id);
+// MAP POPUP
+function showLandPop(id,e){
+  const existCity=cities.find(ct=>ct.areaId===id);
+  const existFact=players.flatMap(p=>p.companies
+    .filter(co=>co.type==='Production'&&co.landAreas.includes(id))
+    .map(co=>({...co,player:p})))[0];
+  const goodOpts=Object.keys(GOOD_REV).map(g=>`<option value="${g}">${g} (+${GOOD_REV[g]}฿)</option>`).join('');
+  const plyrOpts=players.map(p=>`<option value="${p.id}" ${p.id===pid?'selected':''}>${p.name}</option>`).join('');
+  let body=`<div class="pop-hdr"><span>${id}</span><button class="pop-x" onclick="closePop()">✕</button></div>`;
+  if(existCity){
+    const col=CITY_COLOR[existCity.level];
+    body+=`<div class="pop-sec">🏙️ City</div><div class="pop-row"><span style="color:${col};font-family:'Cinzel',serif;font-size:9px;">Lv.${existCity.level} — ${existCity.cityName}</span><button class="btn bg" style="margin-left:auto;" onclick="delCity('${existCity.id}')">Remove</button></div>`;
+  } else if(existFact){
+    const pc=existFact.player.color;
+    body+=`<div class="pop-sec">🏭 Factory</div><div class="pop-row"><span style="font-family:'Cinzel',serif;font-size:9px;"><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${pc};margin-right:4px;"></span>${existFact.good} · ${existFact.player.name}</span><button class="btn bg" style="margin-left:auto;" onclick="delCo('${existFact.id}')">Remove</button></div>`;
+  } else {
+    body+=`<div class="pop-sec">🏙️ City</div>
+<div class="pop-row">
+  <select id="popLv"><option value="1">Lv.1 🟡</option><option value="2">Lv.2 🟢</option><option value="3">Lv.3 🔴</option></select>
+  <button class="btn bp" onclick="popCity('${id}')">Place</button>
+</div>
+<div class="pop-sec">🏭 Factory</div>
+<div class="pop-row">
+  <select id="popGood">${goodOpts}</select>
+  <select id="popPlyr">${plyrOpts}</select>
+  <button class="btn bp" onclick="popFactory('${id}')">Place</button>
+</div>`;
   }
+  const pop=document.getElementById('mapPop');
+  pop.innerHTML=body; pop.style.display='block';
+  const panel=document.querySelector('.map-panel');
+  const pr=panel.getBoundingClientRect();
+  let x=e.clientX-pr.left+10, y=e.clientY-pr.top+10;
+  pop.style.left=x+'px'; pop.style.top=y+'px';
+  setTimeout(()=>{
+    const pw=panel.offsetWidth,ph=panel.offsetHeight;
+    if(x+pop.offsetWidth>pw-8)x=pw-pop.offsetWidth-8;
+    if(y+pop.offsetHeight>ph-8)y=ph-pop.offsetHeight-8;
+    pop.style.left=Math.max(8,x)+'px'; pop.style.top=Math.max(8,y)+'px';
+  },0);
 }
-function onSea(id){
-  if(mode==='sea'){
-    if(selSea.has(id))selSea.delete(id); else selSea.add(id);
-    refreshDots(); refreshSelDisplay();
-  }
+function closePop(){document.getElementById('mapPop').style.display='none';}
+function popCity(id){
+  const lv=parseInt(document.getElementById('popLv').value)||1;
+  placeCity(id,lv); closePop();
 }
+function popFactory(id){
+  const good=document.getElementById('popGood').value;
+  const playerId=document.getElementById('popPlyr').value;
+  const player=players.find(p=>p.id===playerId);
+  player.companies.push({id:'co'+nco++,name:good+' #'+(nco-1),type:'Production',good,landAreas:[id],ownerId:playerId});
+  pid=playerId; document.getElementById('playerSelect').value=playerId;
+  renderCoList(); refreshDots(); closePop();
+}
+function delCity(id){cities=cities.filter(c=>c.id!==id);renderCityMarkers();renderCityList();refreshDots();closePop();}
+function toggleSea(id){
+  if(selSea.has(id))selSea.delete(id); else selSea.add(id);
+  refreshDots(); refreshSelDisplay();
+}
+document.addEventListener('click',()=>closePop());
 
 function refreshDots(){
-  const player=players.find(p=>p.id===pid);
-  // Land
+  // Land: show factory ownership colours + city marker
   landG.querySelectorAll('.ld').forEach(g=>{
-    const id=g.dataset.id;
-    g.className.baseVal='ld';
-    const c=g.querySelector('circle');
-    c.style.fill=''; c.style.stroke='';
-    if(player){
-      for(const co of player.companies){
+    const id=g.dataset.id; g.className.baseVal='ld';
+    const c=g.querySelector('circle'); c.style.fill=''; c.style.stroke='';
+    for(const p of players){
+      for(const co of p.companies){
         if(co.type==='Production'&&co.landAreas.includes(id)){
           g.className.baseVal='ld sel-factory';
-          c.style.fill=player.color+'80';
-          c.style.stroke=player.color;
-          break;
+          c.style.fill=p.color+'80'; c.style.stroke=p.color; break;
         }
       }
     }
-    if(selLand.has(id)){g.className.baseVal='ld sel-factory';c.style.fill='#ff804060';c.style.stroke='#ff8040';}
-    // City on land
-    if(cities.some(ct=>ct.areaId===id)){g.className.baseVal+=' sel-city';}
+    if(cities.some(ct=>ct.areaId===id))g.className.baseVal+=' sel-city';
   });
-  // Sea
+  // Sea: highlight selected route + existing ships
   seaG.querySelectorAll('.sd').forEach(g=>{
-    const id=g.dataset.id;
-    g.className.baseVal='sd';
-    if(player){
-      for(const co of player.companies){
-        if(co.type==='Shipping'&&co.seaCapacities.some(s=>s.seaId===id)){
-          g.className.baseVal='sd sel-sea';break;
-        }
-      }
-    }
+    const id=g.dataset.id; g.className.baseVal='sd';
+    for(const p of players)
+      for(const co of p.companies)
+        if(co.type==='Shipping'&&co.seaCapacities.some(s=>s.seaId===id)){g.className.baseVal='sd sel-sea';break;}
     if(selSea.has(id))g.className.baseVal='sd sel-sea';
   });
 }
 
 function refreshSelDisplay(){
-  const total=selLand.size+selSea.size;
   const el=document.getElementById('selDisplay');
   const chips=document.getElementById('selChips');
-  if(!total){el.style.display='none';return;}
+  if(!selSea.size){el.style.display='none';return;}
   el.style.display='block'; chips.innerHTML='';
-  for(const id of [...selLand].sort()){
-    const ch=document.createElement('div');ch.className='chip';ch.textContent=id;
-    ch.onclick=()=>{selLand.delete(id);refreshDots();refreshSelDisplay();};
-    chips.appendChild(ch);
-  }
   for(const id of [...selSea].sort()){
     const ch=document.createElement('div');ch.className='chip schip';ch.textContent=id;
     ch.onclick=()=>{selSea.delete(id);refreshDots();refreshSelDisplay();};
@@ -421,15 +413,6 @@ function renderCityMarkers(){
 function selectPlayer(id){pid=id;renderCoList();refreshDots();}
 
 // COMPANIES
-function addFactory(){
-  if(!selLand.size){alert('Mode 🏭 → click land area first');return;}
-  const conflict=[...selLand].find(id=>cities.some(ct=>ct.areaId===id));
-  if(conflict){alert('Area '+conflict+' already has a city');return;}
-  const player=players.find(p=>p.id===pid);
-  const good=document.getElementById('quickGood').value;
-  player.companies.push({id:'co'+nco++,name:good+' #'+(nco-1),type:'Production',good,landAreas:[...selLand].sort(),ownerId:pid});
-  selLand.clear();refreshDots();refreshSelDisplay();renderCoList();
-}
 function addShip(){
   if(!selSea.size){alert('Mode 🌊 → click sea area first');return;}
   const player=players.find(p=>p.id===pid);
@@ -454,8 +437,7 @@ function renderCoList(){
 function delCo(id){const p=players.find(x=>x.id===pid);p.companies=p.companies.filter(c=>c.id!==id);renderCoList();refreshDots();}
 
 // CITIES
-function placeCity(areaId){
-  const level=parseInt(document.getElementById('cityLevel').value)||1;
+function placeCity(areaId,level){
   const seaIds=LAND2SEA[areaId]||[];
   const demands={};
   for(const g of Object.keys(GOOD_REV))demands[g]=level;
@@ -647,7 +629,7 @@ function calculate(){
   drawLines(prs);
 }
 
-window.addEventListener('load',()=>{initMap();renderCoList();setMode('view');mainTab('setup');});
+window.addEventListener('load',()=>{initMap();renderCoList();mainTab('setup');});
 window.addEventListener('resize',fitMap);
 </script>
 </body>

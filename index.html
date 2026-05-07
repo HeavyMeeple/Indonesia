@@ -356,7 +356,7 @@ function toggleSea(id){
   if(selSea.has(id))selSea.delete(id); else selSea.add(id);
   refreshDots(); refreshSelDisplay();
 }
-document.addEventListener('click',()=>closePop());
+document.addEventListener('click',e=>{const pop=document.getElementById('mapPop');if(pop&&!pop.contains(e.target))closePop();});
 
 function refreshDots(){
   // Land: show factory ownership colours + city marker

@@ -1,0 +1,44 @@
+import { Era, MachineState } from '@tabletop/indonesia'
+
+export const BOARD_CITY_REFERENCE_CARD_WIDTH = 105
+export const BOARD_CITY_REFERENCE_CARD_HEIGHT = 137
+export const BOARD_CITY_REFERENCE_CARD_RADIUS = 10
+export const BOARD_CITY_REFERENCE_CARD_SHADOW_OFFSET_X = 3
+export const BOARD_CITY_REFERENCE_CARD_SHADOW_OFFSET_Y = 4
+export const BOARD_CITY_REFERENCE_CARD_GAP_X = 16
+export const BOARD_CITY_REFERENCE_CARD_CITY_ICON_SIZE = 60
+export const BOARD_CITY_REFERENCE_CARD_CITY_ICON_TOP_INSET = 23
+export const BOARD_CITY_REFERENCE_CARD_LABEL_BOTTOM_INSET = 18
+export const BOARD_CITY_REFERENCE_CARD_LABEL_FONT_SIZE = 26
+
+export const CITY_REFERENCE_CARD_LEFT_X = 77
+export const CITY_REFERENCE_CARD_TOP_Y = 1063
+export const CITY_REFERENCE_CARD_MIDDLE_X =
+    CITY_REFERENCE_CARD_LEFT_X + BOARD_CITY_REFERENCE_CARD_WIDTH + BOARD_CITY_REFERENCE_CARD_GAP_X
+export const CITY_REFERENCE_CARD_RIGHT_X =
+    CITY_REFERENCE_CARD_MIDDLE_X + BOARD_CITY_REFERENCE_CARD_WIDTH + BOARD_CITY_REFERENCE_CARD_GAP_X
+
+export const CITY_REFERENCE_CARD_LABEL_BY_ERA = {
+    [Era.A]: 'A',
+    [Era.B]: 'B',
+    [Era.C]: 'C'
+} as const
+
+export function visibleBoardCityReferenceCardEras(
+    currentEra: Era,
+    machineState: MachineState
+): readonly Era[] {
+    if (currentEra === Era.C) {
+        return []
+    }
+
+    if (machineState === MachineState.NewEra && currentEra === Era.A) {
+        return [Era.A, Era.B, Era.C]
+    }
+
+    if (currentEra === Era.B) {
+        return [Era.C]
+    }
+
+    return [Era.B, Era.C]
+}

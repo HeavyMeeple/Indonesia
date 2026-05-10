@@ -1,0 +1,423 @@
+<script lang="ts">
+    import {
+        attachCityPlacementAnimator,
+        animatePlacedCity,
+        CityPlacementAnimator
+    } from '$lib/animators/cityPlacementAnimator.js'
+    import { CITY_DEMAND_MARKER_POSITIONS_BY_REGION } from '$lib/definitions/cityDemandMarkerPositions.js'
+    import CityDemandMarker from '$lib/components/CityDemandMarker.svelte'
+    import GlassBeadMarker from '$lib/components/GlassBeadMarker.svelte'
+    import type { CityDemandViewMode } from '$lib/model/cityDemandView.js'
+    import { getGameSession } from '$lib/model/sessionContext.svelte'
+    import { resolveLandMarkerPosition } from '$lib/utils/boardMarkers.js'
+    import { ActionType, Good, MachineState } from '@tabletop/indonesia'
+
+    let { demandViewMode = 'remaining' }: { demandViewMode?: CityDemandViewMode } = $props()
+
+    type BeadTone = 'amber' | 'green' | 'red'
+
+    type CityMarker = {
+        key: string
+        areaId: string
+        x: number
+        y: number
+        tone: BeadTone
+    }
+
+    type CityDemandTag = {
+        key: string
+        areaId: string
+        x: number
+        y: number
+        targetX: number
+        targetY: number
+        isDemandMet: boolean
+        demands: Array<{
+            good: Good
+            count: number
+        }>
+    }
+
+    const gameSession = getGameSession()
+    const CITY_MARKER_HEIGHT = 58
+    const CITY_SELECTION_BEAD_RING_STROKE = 6.2
+    const CITY_SELECTION_BEAD_RING_RADIUS = CITY_MARKER_HEIGHT * 0.38
+    const HOVER_COMPANY_DEMAND_TAG_BRIGHTNESS = 0.74
+    const CITY_REFERENCE_CARD_PREVIEW_DEMAND_TAG_BRIGHTNESS = 0.66
+    const CITY_REFERENCE_CARD_PREVIEW_CITY_OPACITY = 0.66
+    const BOARD_WIDTH = 2646
+    const BOARD_HEIGHT = 1280
+    const BOARD_CENTER = { x: BOARD_WIDTH / 2, y: BOARD_HEIGHT / 2 }
+    const DEMAND_TAG_DISTANCE = 62
+    const DEMAND_TAG_MAX_OFFSET = 14
+
+    const DEMAND_GOOD_ORDER = [
+        Good.Rice,
+        Good.Spice,
+        Good.Rubber,
+        Good.SiapSaji,
+        Good.Oil
+    ] as const
+    const OPERATIONS_MACHINE_STATES = new Set<MachineState>([
+        MachineState.Operations,
+        MachineState.ShippingOperations,
+        MachineState.ProductionOperations
+    ])
+    let animatedCityMarkers: Array<{ areaId: string; tone: BeadTone }> = $state([])
+
+    const cityPlacementAnimator = new CityPlacementAnimator(gameSession, {
+        showAnimatedCityMarkers: (markers) => {
+            animatedCityMarkers = markers
+        },
+        clearAnimatedCityMarkers: () => {
+            animatedCityMarkers = []
+        }
+    })
+
+    function beadToneForCitySize(size: number): BeadTone {
+        if (size === 1) {
+            return 'amber'
+        }
+        if (size === 2) {
+            return 'green'
+        }
+        return 'red'
+    }
+
+    const placedCityMarkers: CityMarker[] = $derived.by(() => {
+        const markers: CityMarker[] = []
+
+        for (const city of gameSession.gameState.board.cities) {
+            const markerPosition = resolveLandMarkerPosition(city.area)
+            if (!markerPosition) {
+                continue
+            }
+
+            markers.push({
+                key: city.area,
+                areaId: city.area,
+                x: markerPosition.x,
+                y: markerPosition.y,
+                tone: beadToneForCitySize(city.size)
+            })
+        }
+
+        return markers
+    })
+
+    const animatedCityMarkerEntries: CityMarker[] = $derived.by(() => {
+        const markers: CityMarker[] = []
+
+        for (const city of animatedCityMarkers) {
+            const markerPosition = resolveLandMarkerPosition(city.areaId)
+            if (!markerPosition) {
+                continue
+            }
+
+            markers.push({
+                key: `animated:${city.areaId}`,
+                areaId: city.areaId,
+                x: markerPosition.x,
+                y: markerPosition.y,
+                tone: city.tone
+            })
+        }
+
+        return markers
+    })
+
+    const areaRegionById: Map<string, string> = $derived.by(() => {
+        const byId = new Map<string, string>()
+        for (const node of gameSession.gameState.board) {
+            if (!node.region) {
+                continue
+            }
+            byId.set(node.id, node.region)
+        }
+        return byId
+    })
+
+    function cityOffsetSeed(cityId: string): number {
+        let hash = 0
+        for (const char of cityId) {
+            hash = (hash * 31 + char.charCodeAt(0)) >>> 0
+        }
+        return hash
+    }
+
+    function fallbackDemandTagPosition(markerPosition: { x: number; y: number }, cityId: string): {
+        x: number
+        y: number
+    } {
+        const dx = markerPosition.x - BOARD_CENTER.x
+        const dy = markerPosition.y - BOARD_CENTER.y
+        const magnitude = Math.hypot(dx, dy)
+        const ux = magnitude > 0.001 ? dx / magnitude : 0
+        const uy = magnitude > 0.001 ? dy / magnitude : -1
+        const tx = -uy
+        const ty = ux
+        const jitter = ((cityOffsetSeed(cityId) % 5) - 2) * (DEMAND_TAG_MAX_OFFSET / 2)
+
+        return {
+            x: markerPosition.x + ux * DEMAND_TAG_DISTANCE + tx * jitter,
+            y: markerPosition.y + uy * DEMAND_TAG_DISTANCE + ty * jitter
+        }
+    }
+
+    const cityDemandTags: CityDemandTag[] = $derived.by(() => {
+        if (!OPERATIONS_MACHINE_STATES.has(gameSession.gameState.machineState)) {
+            return []
+        }
+
+        const producedGoods = gameSession.gameState.producedGoodsOnBoard()
+        if (producedGoods.size === 0) {
+            return []
+        }
+
+        const tags: CityDemandTag[] = []
+
+        for (const city of gameSession.gameState.board.cities) {
+            const markerPosition = resolveLandMarkerPosition(city.area)
+            if (!markerPosition) {
+                continue
+            }
+
+            const remainingDemands = DEMAND_GOOD_ORDER.map((good) => ({
+                good,
+                count: gameSession.gameState.remainingCityDemandForGood(city, good)
+            })).filter((entry) => entry.count > 0)
+            const deliveredDemands = DEMAND_GOOD_ORDER.map((good) => ({
+                good,
+                count: gameSession.gameState.currentCityDemandForGood(city, good)
+            })).filter((entry) => entry.count > 0)
+            const isDemandMet = remainingDemands.length === 0
+            if (demandViewMode === 'delivered' && !isDemandMet && deliveredDemands.length === 0) {
+                continue
+            }
+
+            const demands = demandViewMode === 'delivered' && !isDemandMet ? deliveredDemands : remainingDemands
+
+            const regionId = areaRegionById.get(city.area)
+            const regionPosition = regionId
+                ? CITY_DEMAND_MARKER_POSITIONS_BY_REGION[regionId]
+                : undefined
+            const fallbackPosition = fallbackDemandTagPosition(markerPosition, city.id)
+            const x = regionPosition?.x ?? fallbackPosition.x
+            const y = regionPosition?.y ?? fallbackPosition.y
+
+            tags.push({
+                key: city.id,
+                areaId: city.area,
+                x,
+                y,
+                targetX: markerPosition.x,
+                targetY: markerPosition.y,
+                isDemandMet,
+                demands
+            })
+        }
+
+        return tags
+    })
+
+    const isSelectingDeliveryCity: boolean = $derived.by(() => {
+        if (gameSession.cityReferenceCardPreviewWins) {
+            return false
+        }
+        return (
+            !gameSession.suppressBoardEffectsForHistory &&
+            gameSession.deliverySelectionEnabled &&
+            gameSession.deliverySelectionStage === 'city'
+        )
+    })
+
+    const hoveredDeliveryCityAreaId: string | null = $derived.by(() => {
+        if (!isSelectingDeliveryCity) {
+            return null
+        }
+        return gameSession.hoveredDeliveryCityAreaId
+    })
+
+    const selectableDeliveryCityAreaIds: ReadonlySet<string> = $derived.by(() => {
+        if (!isSelectingDeliveryCity) {
+            return new Set()
+        }
+        return new Set(gameSession.deliveryAvailableCityAreaIds)
+    })
+
+    const hoveredRouteCityAreaId: string | null = $derived.by(() => {
+        return gameSession.activeRoutePreviewVisualState?.cityAreaId ?? null
+    })
+
+    const hasHoveredRouteCity: boolean = $derived.by(() => hoveredRouteCityAreaId !== null)
+
+    const hoveredRoutePreviewDimmedCityAreaIdSet: ReadonlySet<string> = $derived.by(() => {
+        return gameSession.activeRoutePreviewVisualState?.dimmedLandAreaIdSet ?? new Set<string>()
+    })
+
+    const shouldDimCitiesForCityReferenceCardPreview: boolean = $derived.by(() => {
+        return gameSession.cityReferenceCardPreviewWins
+    })
+
+    const shouldDimDemandTagsForCompanyHover: boolean = $derived.by(() => {
+        if (gameSession.suppressBoardEffectsForHistory) {
+            return false
+        }
+        if (gameSession.cityReferenceCardPreviewWins) {
+            return false
+        }
+
+        if (gameSession.activeCompanyPiecePreviewCompanyIds.length > 0) {
+            return true
+        }
+
+        return (
+            gameSession.validActionTypes.includes(ActionType.Expand) &&
+            (gameSession.gameState.machineState === MachineState.ShippingOperations ||
+                gameSession.gameState.machineState === MachineState.ProductionOperations)
+        )
+    })
+</script>
+
+<g class="pointer-events-none select-none" aria-label="Cities layer" {@attach attachCityPlacementAnimator(cityPlacementAnimator)}></g>
+
+<g class="pointer-events-none select-none" aria-label="Cities layer">
+    {#each placedCityMarkers as marker (marker.key)}
+        {#if !animatedCityMarkers.some((animatedCity) => animatedCity.areaId === marker.areaId)}
+            {@const isSelectableDeliveryCity =
+                isSelectingDeliveryCity && selectableDeliveryCityAreaIds.has(marker.areaId)}
+            {@const isHoveredSelectableDeliveryCity =
+                isSelectableDeliveryCity && hoveredDeliveryCityAreaId === marker.areaId}
+            {@const isHoveredRouteCity = hoveredRouteCityAreaId === marker.areaId}
+            {@const isDimmedForRoutePreview = hoveredRoutePreviewDimmedCityAreaIdSet.has(marker.areaId)}
+            <g
+                transform={`translate(${marker.x} ${marker.y})`}
+                opacity={hasHoveredRouteCity
+                    ? isDimmedForRoutePreview && !isHoveredRouteCity
+                        ? 0.34
+                        : 1
+                    : shouldDimCitiesForCityReferenceCardPreview
+                      ? CITY_REFERENCE_CARD_PREVIEW_CITY_OPACITY
+                      : 1}
+                use:animatePlacedCity={{ animator: cityPlacementAnimator, areaId: marker.areaId }}
+            >
+                <GlassBeadMarker
+                    x={0}
+                    y={0}
+                    tone={marker.tone}
+                    height={isHoveredSelectableDeliveryCity || isHoveredRouteCity ? CITY_MARKER_HEIGHT * 1.1 : CITY_MARKER_HEIGHT}
+                />
+            </g>
+            {#if isSelectableDeliveryCity || isHoveredRouteCity}
+                <circle
+                    cx={marker.x}
+                    cy={marker.y}
+                    r={isHoveredSelectableDeliveryCity || isHoveredRouteCity ? CITY_SELECTION_BEAD_RING_RADIUS * 1.06 : CITY_SELECTION_BEAD_RING_RADIUS}
+                    fill="none"
+                    stroke="#fff8d7"
+                    stroke-width={(isHoveredSelectableDeliveryCity || isHoveredRouteCity) ? CITY_SELECTION_BEAD_RING_STROKE * 1.14 : CITY_SELECTION_BEAD_RING_STROKE}
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    opacity="0.94"
+                ></circle>
+                <circle
+                    cx={marker.x}
+                    cy={marker.y}
+                    r={isHoveredSelectableDeliveryCity || isHoveredRouteCity ? CITY_SELECTION_BEAD_RING_RADIUS * 1.06 : CITY_SELECTION_BEAD_RING_RADIUS}
+                    fill="none"
+                    stroke="#1f2937"
+                    stroke-width={(isHoveredSelectableDeliveryCity || isHoveredRouteCity) ? 3 : 2.4}
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    opacity="0.92"
+                ></circle>
+            {/if}
+        {/if}
+    {/each}
+
+    {#each animatedCityMarkerEntries as marker (marker.key)}
+        {@const isSelectableDeliveryCity =
+            isSelectingDeliveryCity && selectableDeliveryCityAreaIds.has(marker.areaId)}
+        {@const isHoveredSelectableDeliveryCity =
+            isSelectableDeliveryCity && hoveredDeliveryCityAreaId === marker.areaId}
+        {@const isHoveredRouteCity = hoveredRouteCityAreaId === marker.areaId}
+        {@const isDimmedForRoutePreview = hoveredRoutePreviewDimmedCityAreaIdSet.has(marker.areaId)}
+        <g
+            transform={`translate(${marker.x} ${marker.y})`}
+            opacity={hasHoveredRouteCity
+                ? isDimmedForRoutePreview && !isHoveredRouteCity
+                    ? 0.34
+                    : 1
+                : shouldDimCitiesForCityReferenceCardPreview
+                  ? CITY_REFERENCE_CARD_PREVIEW_CITY_OPACITY
+                  : 1}
+            use:animatePlacedCity={{ animator: cityPlacementAnimator, areaId: marker.areaId }}
+        >
+            <GlassBeadMarker
+                x={0}
+                y={0}
+                tone={marker.tone}
+                height={isHoveredSelectableDeliveryCity || isHoveredRouteCity ? CITY_MARKER_HEIGHT * 1.1 : CITY_MARKER_HEIGHT}
+            />
+        </g>
+        {#if isSelectableDeliveryCity || isHoveredRouteCity}
+            <circle
+                cx={marker.x}
+                cy={marker.y}
+                r={isHoveredSelectableDeliveryCity || isHoveredRouteCity ? CITY_SELECTION_BEAD_RING_RADIUS * 1.06 : CITY_SELECTION_BEAD_RING_RADIUS}
+                fill="none"
+                stroke="#fff8d7"
+                stroke-width={(isHoveredSelectableDeliveryCity || isHoveredRouteCity) ? CITY_SELECTION_BEAD_RING_STROKE * 1.14 : CITY_SELECTION_BEAD_RING_STROKE}
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                opacity="0.94"
+            ></circle>
+            <circle
+                cx={marker.x}
+                cy={marker.y}
+                r={isHoveredSelectableDeliveryCity || isHoveredRouteCity ? CITY_SELECTION_BEAD_RING_RADIUS * 1.06 : CITY_SELECTION_BEAD_RING_RADIUS}
+                fill="none"
+                stroke="#1f2937"
+                stroke-width={(isHoveredSelectableDeliveryCity || isHoveredRouteCity) ? 3 : 2.4}
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                opacity="0.92"
+            ></circle>
+        {/if}
+    {/each}
+
+    <g aria-label="City demand markers">
+        {#each cityDemandTags as tag (tag.key)}
+            {@const isSelectableDeliveryCity =
+                isSelectingDeliveryCity && selectableDeliveryCityAreaIds.has(tag.areaId)}
+            {@const isHoveredSelectableDeliveryCity =
+                isSelectableDeliveryCity && hoveredDeliveryCityAreaId === tag.areaId}
+            {@const isHoveredRouteCity = hoveredRouteCityAreaId === tag.areaId}
+            {@const darkened =
+                shouldDimCitiesForCityReferenceCardPreview
+                    ? true
+                    : hasHoveredRouteCity
+                    ? !isHoveredRouteCity
+                    : isSelectingDeliveryCity
+                      ? false
+                      : shouldDimDemandTagsForCompanyHover}
+            {@const darkenedBrightness =
+                shouldDimCitiesForCityReferenceCardPreview
+                    ? CITY_REFERENCE_CARD_PREVIEW_DEMAND_TAG_BRIGHTNESS
+                    : HOVER_COMPANY_DEMAND_TAG_BRIGHTNESS}
+            <CityDemandMarker
+                x={tag.x}
+                y={tag.y}
+                targetX={tag.targetX}
+                targetY={tag.targetY}
+                demandMet={tag.isDemandMet}
+                demands={tag.demands}
+                highlighted={isSelectableDeliveryCity || isHoveredRouteCity}
+                hovered={isHoveredSelectableDeliveryCity || isHoveredRouteCity}
+                darkened={darkened}
+                {darkenedBrightness}
+                emptyLabel="DEMAND MET"
+            />
+        {/each}
+    </g>
+</g>

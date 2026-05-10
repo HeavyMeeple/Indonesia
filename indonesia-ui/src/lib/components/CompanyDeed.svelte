@@ -1,0 +1,259 @@
+<script module lang="ts">
+    import OilCompanyIcon from '$lib/images/OilCompanyIcon.svelte'
+    import RiceCompanyIcon from '$lib/images/RiceCompanyIcon.svelte'
+    import RubberCompanyIcon from '$lib/images/RubberCompanyIcon.svelte'
+    import ShipCompanyIcon from '$lib/images/ShipCompanyIcon.svelte'
+    import SpiceCompanyIcon from '$lib/images/SpiceCompanyIcon.svelte'
+    import type { CompanyCardType } from '$lib/types/companyCard.js'
+    import { CompanyType, Good, type AnyDeed } from '@tabletop/indonesia'
+
+    const COMPANY_DEED_STYLE_BY_TYPE = {
+        rice: {
+            icon: RiceCompanyIcon,
+            outlineColor: '#b5a086',
+            textColor: '#6c5a46',
+            textXRatio: 0.45,
+            textYRatio: 0.4,
+            overlayFill: '#e8d2b7',
+            overlayStroke: '#6c5a46',
+            overlayOpacity: 0.8
+        },
+        spice: {
+            icon: SpiceCompanyIcon,
+            outlineColor: '#8ea76d',
+            textColor: '#425735',
+            textXRatio: 0.45,
+            textYRatio: 0.45,
+            overlayFill: '#c6da90',
+            overlayStroke: '#3f552f',
+            overlayOpacity: 0.8
+        },
+        siapsaji: {
+            icon: SpiceCompanyIcon,
+            outlineColor: '#b08fa0',
+            textColor: '#6f4c5f',
+            textXRatio: 0.45,
+            textYRatio: 0.45,
+            overlayFill: '#f3eeea',
+            overlayStroke: '#6f4c5f',
+            overlayOpacity: 0.8
+        },
+        rubber: {
+            icon: RubberCompanyIcon,
+            outlineColor: '#9c9c9c',
+            textColor: '#131113',
+            textXRatio: 0.45,
+            textYRatio: 0.45,
+            overlayFill: '#c1bdbb',
+            overlayStroke: '#131113',
+            overlayOpacity: 0.8
+        },
+        oil: {
+            icon: OilCompanyIcon,
+            outlineColor: '#8a7f9b',
+            textColor: '#23344f',
+            textXRatio: 0.61,
+            textYRatio: 0.33,
+            overlayFill: '#baa8ca',
+            overlayStroke: '#23344f',
+            overlayOpacity: 0.8
+        },
+        ship: {
+            icon: ShipCompanyIcon,
+            outlineColor: '#7ea6ad',
+            textColor: '#396c78',
+            textXRatio: 0.45,
+            textYRatio: 0.45,
+            overlayFill: '#9fc4c5',
+            overlayStroke: '#396c78',
+            overlayOpacity: 0.4
+        }
+    }
+
+    export type CompanyDeedStyle = (typeof COMPANY_DEED_STYLE_BY_TYPE)[CompanyCardType]
+
+    const PRODUCTION_COMPANY_DEED_TYPE_BY_GOOD: Readonly<Record<Good, CompanyCardType>> = {
+        [Good.Rice]: 'rice',
+        [Good.Spice]: 'spice',
+        [Good.Rubber]: 'rubber',
+        [Good.Oil]: 'oil',
+        [Good.SiapSaji]: 'siapsaji'
+    }
+
+    export function companyDeedStyleForType(type: CompanyCardType): CompanyDeedStyle {
+        return COMPANY_DEED_STYLE_BY_TYPE[type]
+    }
+
+    export function companyCardKindFor(companyType: CompanyType, good?: Good): CompanyCardType {
+        if (companyType === CompanyType.Shipping) {
+            return 'ship'
+        }
+        if (!good) {
+            throw new Error('Production company card kind requires a good type')
+        }
+        return PRODUCTION_COMPANY_DEED_TYPE_BY_GOOD[good]
+    }
+
+    export function deedCardKindFor(deed: AnyDeed): CompanyCardType {
+        if (deed.type === CompanyType.Production) {
+            return companyCardKindFor(deed.type, deed.good)
+        }
+        return companyCardKindFor(deed.type)
+    }
+</script>
+
+<script lang="ts">
+    import {
+        COMPANY_DEED_ASPECT_RATIO,
+        COMPANY_DEED_VIEWBOX_HEIGHT,
+        COMPANY_DEED_VIEWBOX_RX,
+        COMPANY_DEED_VIEWBOX_RY,
+        COMPANY_DEED_VIEWBOX_WIDTH
+    } from '$lib/definitions/companyDeedGeometry.js'
+    import type { CompanyDeedTextLayout } from '$lib/definitions/deedTextLayout.js'
+
+    type CompanyDeedType = import('$lib/types/companyCard.js').CompanyCardType
+
+    type ShippingSizeEntry = {
+        era: 'A' | 'B' | 'C'
+        size: number
+    }
+
+    let {
+        type,
+        x,
+        y,
+        height = 58,
+        outline = true,
+        outlineColor,
+        text = '',
+        textColor,
+        textLayout = null,
+        shippingSizes = null,
+        hatchPatternId = null
+    }: {
+        type: CompanyDeedType
+        x: number
+        y: number
+        height?: number
+        outline?: boolean
+        outlineColor?: string
+        text?: string
+        textColor?: string
+        textLayout?: CompanyDeedTextLayout | null
+        shippingSizes?: readonly ShippingSizeEntry[] | null
+        hatchPatternId?: string | null
+    } = $props()
+
+    const deedStyle = $derived(companyDeedStyleForType(type))
+    const width = $derived(height * COMPANY_DEED_ASPECT_RATIO)
+    const iconXLocal = $derived(-width / 2)
+    const iconYLocal = $derived(-height / 2)
+    const outlineXLocal = $derived(iconXLocal - 2)
+    const outlineYLocal = $derived(iconYLocal - 2)
+    const outlineRx = $derived((width / COMPANY_DEED_VIEWBOX_WIDTH) * COMPANY_DEED_VIEWBOX_RX)
+    const outlineRy = $derived((height / COMPANY_DEED_VIEWBOX_HEIGHT) * COMPANY_DEED_VIEWBOX_RY)
+    const resolvedOutlineColor = $derived(outlineColor ?? deedStyle.outlineColor)
+    const resolvedTextColor = $derived(textColor ?? deedStyle.textColor)
+    const textXLocal = $derived(iconXLocal + width * (textLayout?.textXRatio ?? deedStyle.textXRatio))
+    const textYLocal = $derived(iconYLocal + height * (textLayout?.textYRatio ?? deedStyle.textYRatio))
+    const textSize = $derived(height * (textLayout?.textSizeRatio ?? 0.23))
+    const textLines = $derived.by(() => {
+        if (textLayout?.lines && textLayout.lines.length > 0) {
+            return textLayout.lines
+        }
+
+        const trimmed = text.trim()
+        return trimmed.length === 0 ? [] : trimmed.split(/\s+/)
+    })
+    const textLineHeight = $derived(textSize * (textLayout?.textLineHeightRatio ?? 1.05))
+    const textStartYLocal = $derived(textYLocal - ((textLines.length - 1) * textLineHeight) / 2)
+    const shippingSizeRow = $derived.by(() => shippingSizes ?? [])
+    const shippingSizePairGap = $derived(width * 0.31)
+    const shippingSizeStartXLocal = $derived(
+        -((shippingSizeRow.length - 1) * shippingSizePairGap) / 2
+    )
+    const shippingSizeYLocal = $derived(iconYLocal + height * 0.88 + 5)
+    const shippingSizeFont = $derived(height * 0.21)
+    const shippingEraFont = $derived(shippingSizeFont * 0.82)
+    const shippingPairInnerGap = $derived(height * 0.012)
+    const shippingEraOpacity = 0.62
+    const shippingNumberOpacity = 1
+</script>
+
+<g class="pointer-events-none select-none" aria-hidden="true" transform={`translate(${x} ${y})`}>
+    {#if outline}
+        <rect
+            x={outlineXLocal}
+            y={outlineYLocal}
+            width={width + 4}
+            height={height + 4}
+            rx={outlineRx}
+            ry={outlineRy}
+            fill={resolvedOutlineColor}
+            opacity={1}
+        ></rect>
+    {/if}
+    <deedStyle.icon x={iconXLocal} y={iconYLocal} {width} {height} />
+    {#if hatchPatternId}
+        <rect
+            x={iconXLocal}
+            y={iconYLocal}
+            {width}
+            {height}
+            rx={outlineRx}
+            ry={outlineRy}
+            fill={`url(#${hatchPatternId})`}
+            opacity="0.45"
+        ></rect>
+    {/if}
+    {#if textLines.length > 0}
+        <text
+            x={textXLocal}
+            class="indonesia-font"
+            fill={resolvedTextColor}
+            font-size={textSize}
+            text-anchor="start"
+            letter-spacing="0.2"
+        >
+            {#each textLines as line, lineIndex (lineIndex)}
+                <tspan x={textXLocal} y={textStartYLocal + lineIndex * textLineHeight}>
+                    {line.length === 0 ? ' ' : line}
+                </tspan>
+            {/each}
+        </text>
+    {/if}
+    {#if shippingSizeRow.length > 0}
+        <g>
+            {#each shippingSizeRow as sizeEntry, index (`${sizeEntry.era}-${sizeEntry.size}-${index}`)}
+                {@const pairCenterX = shippingSizeStartXLocal + index * shippingSizePairGap}
+                <text
+                    x={pairCenterX - shippingPairInnerGap}
+                    y={shippingSizeYLocal}
+                    fill={resolvedTextColor}
+                    fill-opacity={shippingEraOpacity}
+                    font-size={shippingEraFont}
+                    font-weight="500"
+                    font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, Helvetica, Arial, sans-serif"
+                    text-anchor="end"
+                    letter-spacing="0.05"
+                >
+                    {sizeEntry.era}
+                </text>
+                <text
+                    x={pairCenterX + shippingPairInnerGap}
+                    y={shippingSizeYLocal}
+                    fill={resolvedTextColor}
+                    fill-opacity={shippingNumberOpacity}
+                    font-size={shippingSizeFont}
+                    font-weight="700"
+                    font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, Helvetica, Arial, sans-serif"
+                    text-anchor="start"
+                    letter-spacing="0.05"
+                >
+                    {sizeEntry.size}
+                </text>
+            {/each}
+        </g>
+    {/if}
+</g>

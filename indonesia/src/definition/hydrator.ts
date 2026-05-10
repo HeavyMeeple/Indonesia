@@ -1,0 +1,98 @@
+import { GameAction, type GameHydrator, type HydratedAction } from '@tabletop/common'
+import { HydratedIndonesiaGameState, IndonesiaGameState } from '../model/gameState.js'
+import { HydratedPlaceCity, isPlaceCity } from '../actions/placeCity.js'
+import { HydratedPass, isPass } from '../actions/pass.js'
+import { HydratedPlaceCompanyDeeds, isPlaceCompanyDeeds } from '../actions/placeCompanyDeeds.js'
+import { HydratedPlaceTurnOrderBid, isPlaceTurnOrderBid } from '../actions/placeTurnOrderBid.js'
+import { HydratedSetTurnOrder, isSetTurnOrder } from '../actions/setTurnOrder.js'
+import { HydratedStartCompany, isStartCompany } from '../actions/startCompany.js'
+import { HydratedProposeMerger, isProposeMerger } from '../actions/proposeMerger.js'
+import { HydratedPlaceMergerBid, isPlaceMergerBid } from '../actions/placeMergerBid.js'
+import { HydratedPassMergerBid, isPassMergerBid } from '../actions/passMergerBid.js'
+import { HydratedMergeCompanies, isMergeCompanies } from '../actions/mergeCompanies.js'
+import {
+    HydratedRemoveSiapSajiArea,
+    isRemoveSiapSajiArea
+} from '../actions/removeSiapSajiArea.js'
+import { HydratedResearch, isResearch } from '../actions/research.js'
+import { HydratedDeliverGood, isDeliverGood } from '../actions/deliverGood.js'
+import {
+    HydratedChooseOperatingCompany,
+    isChooseOperatingCompany
+} from '../actions/chooseOperatingCompany.js'
+import { HydratedExpand, isExpand } from '../actions/expand.js'
+import { HydratedGrowCity, isGrowCity } from '../actions/growCity.js'
+import {
+    HydratedRemoveCompanyDeed,
+    isRemoveCompanyDeed
+} from '../actions/removeCompanyDeed.js'
+
+// This is essentially a factory that knows how to take raw action and state data
+// and return the correct hydrated class instances for the Sample game.  Used by the game engine
+export class IndonesiaHydrator implements GameHydrator<
+    IndonesiaGameState,
+    HydratedIndonesiaGameState
+> {
+    hydrateAction(data: GameAction): HydratedAction {
+        switch (true) {
+            case isPlaceCompanyDeeds(data): {
+                return new HydratedPlaceCompanyDeeds(data)
+            }
+            case isPlaceCity(data): {
+                return new HydratedPlaceCity(data)
+            }
+            case isPass(data): {
+                return new HydratedPass(data)
+            }
+            case isPlaceTurnOrderBid(data): {
+                return new HydratedPlaceTurnOrderBid(data)
+            }
+            case isSetTurnOrder(data): {
+                return new HydratedSetTurnOrder(data)
+            }
+            case isStartCompany(data): {
+                return new HydratedStartCompany(data)
+            }
+            case isProposeMerger(data): {
+                return new HydratedProposeMerger(data)
+            }
+            case isPlaceMergerBid(data): {
+                return new HydratedPlaceMergerBid(data)
+            }
+            case isPassMergerBid(data): {
+                return new HydratedPassMergerBid(data)
+            }
+            case isMergeCompanies(data): {
+                return new HydratedMergeCompanies(data)
+            }
+            case isRemoveSiapSajiArea(data): {
+                return new HydratedRemoveSiapSajiArea(data)
+            }
+            case isResearch(data): {
+                return new HydratedResearch(data)
+            }
+            case isDeliverGood(data): {
+                return new HydratedDeliverGood(data)
+            }
+            case isChooseOperatingCompany(data): {
+                return new HydratedChooseOperatingCompany(data)
+            }
+            case isExpand(data): {
+                return new HydratedExpand(data)
+            }
+            case isGrowCity(data): {
+                return new HydratedGrowCity(data)
+            }
+            case isRemoveCompanyDeed(data): {
+                return new HydratedRemoveCompanyDeed(data)
+            }
+            default: {
+                throw new Error(`Unknown action type ${data.type}`)
+            }
+        }
+    }
+
+    hydrateState(state: IndonesiaGameState): HydratedIndonesiaGameState {
+        return new HydratedIndonesiaGameState(state)
+    }
+}

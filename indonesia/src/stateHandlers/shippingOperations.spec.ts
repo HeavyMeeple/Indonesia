@@ -1,0 +1,418 @@
+import {
+    ActionSource,
+    GameCategory,
+    GameStatus,
+    GameStorage,
+    MachineContext,
+    PlayerStatus,
+    createAction,
+    type Game,
+    type Player,
+    type UninitializedGameState
+} from '@tabletop/common'
+import { describe, expect, it } from 'vitest'
+import { AreaType } from '../components/area.js'
+import { CompanyType } from '../definition/companyType.js'
+import { ActionType } from '../definition/actions.js'
+import { IndonesiaGameInitializer } from '../definition/initializer.js'
+import { PhaseName } from '../definition/phases.js'
+import { MachineState } from '../definition/states.js'
+import { IndonesiaAreaType, IndonesiaNeighborDirection } from '../utils/indonesiaNodes.js'
+import { Expand, HydratedExpand } from '../actions/expand.js'
+import { HydratedPass, Pass, PassReason } from '../actions/pass.js'
+import { ShippingOperationsStateHandler } from './shippingOperations.js'
+
+function createTestState() {
+    const players: Player[] = [
+        {
+            id: 'p1',
+            isHuman: true,
+            userId: 'u1',
+            name: 'Player 1',
+            status: PlayerStatus.Joined
+        },
+        {
+            id: 'p2',
+            isHuman: true,
+            userId: 'u2',
+            name: 'Player 2',
+            status: PlayerStatus.Joined
+        }
+    ]
+
+    const game: Game = {
+        id: 'game-1',
+        typeId: 'indonesia',
+        status: GameStatus.Started,
+        isPublic: false,
+        deleted: false,
+        ownerId: 'u1',
+        name: 'Indonesia Test',
+        players,
+        config: {},
+        hotseat: false,
+        winningPlayerIds: [],
+        seed: 123,
+        createdAt: new Date(),
+        storage: GameStorage.Local,
+        category: GameCategory.Standard
+    }
+
+    const state: UninitializedGameState = {
+        id: 'state-1',
+        gameId: game.id,
+        activePlayerIds: [],
+        actionCount: 0,
+        actionChecksum: 0,
+        prng: { seed: 123, invocations: 0 },
+        winningPlayerIds: []
+    }
+
+    return new IndonesiaGameInitializer().initializeGameState(game, state)
+}
+
+function findShippingExpansionFixture(state: ReturnType<typeof createTestState>) {
+    const seaNodes = Array.from(state.board).filter((node) => node.type === IndonesiaAreaType.Sea)
+
+    for (const originNode of seaNodes) {
+        for (const firstTargetAreaId of originNode.neighbors[IndonesiaNeighborDirection.Sea]) {
+            const firstTargetNode = state.board.graph.nodeById(firstTargetAreaId)
+            if (!firstTargetNode || firstTargetNode.type !== IndonesiaAreaType.Sea) {
+                continue
+            }
+
+            const secondTargetAreaId = [
+                ...originNode.neighbors[IndonesiaNeighborDirection.Sea],
+                ...firstTargetNode.neighbors[IndonesiaNeighborDirection.Sea]
+            ].find(
+                (candidateAreaId) =>
+                    candidateAreaId !== originNode.id &&
+                    candidateAreaId !== firstTargetAreaId &&
+                    state.board.graph.nodeById(candidateAreaId)?.type === IndonesiaAreaType.Sea
+            )
+            if (!secondTargetAreaId) {
+                continue
+            }
+
+            return {
+                originAreaId: originNode.id,
+                firstTargetAreaId,
+                secondTargetAreaId
+            }
+        }
+    }
+
+    return null
+}
+
+function createMachineContext(state: ReturnType<typeof createTestState>) {
+    return new MachineContext({
+        gameConfig: {},
+        gameState: state
+    })
+}
+
+function createExpandAction(
+    state: ReturnType<typeof createTestState>,
+    playerId: string,
+    areaId: string
+) {
+    return new HydratedExpand(
+        createAction(Expand, {
+            id: `expand-${state.actionCount}`,
+            gameId: state.gameId,
+            source: ActionSource.User,
+            playerId,
+            areaId
+        })
+    )
+}
+
+function createPassAction(
+    state: ReturnType<typeof createTestState>,
+    playerId: string,
+    reason: PassReason
+) {
+    return new HydratedPass(
+        createAction(Pass, {
+            id: `pass-${state.actionCount}`,
+            gameId: state.gameId,
+            source: ActionSource.User,
+            playerId,
+            reason
+        })
+    )
+}
+
+describe('ShippingOperationsStateHandler', () => {
+    it('offers pass alongside expand when shipping expansion is optional', () => {
+        const state = createTestState()
+        const playerId = state.players[0].playerId
+        const shippingDeed = state.availableDeeds.find(
+            (deed) => deed.type === CompanyType.Shipping && (deed.sizes[state.era] ?? 0) > 0
+        )
+        const fixture = findShippingExpansionFixture(state)
+
+        expect(shippingDeed).toBeDefined()
+        expect(fixture).toBeDefined()
+        if (!shippingDeed || shippingDeed.type !== CompanyType.Shipping || !fixture) {
+            return
+        }
+
+        const companyId = 'shipping-company'
+        state.companies = [
+            {
+                id: companyId,
+                type: CompanyType.Shipping,
+                owner: playerId,
+                deeds: [shippingDeed]
+            }
+        ]
+        state.machineState = MachineState.ShippingOperations
+        state.phaseManager.startPhase(PhaseName.Operations, state.actionCount)
+        state.beginCompanyOperation(companyId)
+        state.turnManager.startTurn(playerId, state.actionCount)
+        state.board.areas[fixture.originAreaId] = {
+            id: fixture.originAreaId,
+            type: AreaType.Sea,
+            ships: [companyId]
+        }
+
+        const handler = new ShippingOperationsStateHandler()
+        const context = createMachineContext(state)
+
+        expect(handler.validActionsForPlayer(playerId, context)).toEqual([
+            ActionType.Expand,
+            ActionType.Pass
+        ])
+    })
+
+    it('stays in shipping operations when the operating company can still expand', () => {
+        const state = createTestState()
+        const playerId = state.players[0].playerId
+        const shippingDeed = state.availableDeeds.find(
+            (deed) => deed.type === CompanyType.Shipping && (deed.sizes[state.era] ?? 0) > 2
+        )
+        const fixture = findShippingExpansionFixture(state)
+
+        expect(shippingDeed).toBeDefined()
+        expect(fixture).toBeDefined()
+        if (!shippingDeed || shippingDeed.type !== CompanyType.Shipping || !fixture) {
+            return
+        }
+
+        state.getPlayerState(playerId).research.expansion = 1
+        const companyId = 'shipping-company'
+        state.companies = [
+            {
+                id: companyId,
+                type: CompanyType.Shipping,
+                owner: playerId,
+                deeds: [shippingDeed]
+            }
+        ]
+        state.machineState = MachineState.ShippingOperations
+        state.phaseManager.startPhase(PhaseName.Operations, state.actionCount)
+        state.beginCompanyOperation(companyId)
+        state.turnManager.startTurn(playerId, state.actionCount)
+        state.board.areas[fixture.originAreaId] = {
+            id: fixture.originAreaId,
+            type: AreaType.Sea,
+            ships: [companyId]
+        }
+
+        const action = createExpandAction(state, playerId, fixture.firstTargetAreaId)
+        action.apply(state)
+
+        const handler = new ShippingOperationsStateHandler()
+        const context = createMachineContext(state)
+        const nextState = handler.onAction(action, context)
+
+        expect(nextState).toBe(MachineState.ShippingOperations)
+        expect(state.operatingCompanyId).toBe(companyId)
+        expect(state.operatingCompanyExpansionCount).toBe(1)
+        expect(state.operatedCompanyIds).toEqual([])
+    })
+
+    it('finishes the shipping operation when the player passes instead of expanding', () => {
+        const state = createTestState()
+        const playerId = state.players[0].playerId
+        const shippingDeed = state.availableDeeds.find(
+            (deed) => deed.type === CompanyType.Shipping && (deed.sizes[state.era] ?? 0) > 0
+        )
+        const fixture = findShippingExpansionFixture(state)
+
+        expect(shippingDeed).toBeDefined()
+        expect(fixture).toBeDefined()
+        if (!shippingDeed || shippingDeed.type !== CompanyType.Shipping || !fixture) {
+            return
+        }
+
+        const companyId = 'shipping-company'
+        state.companies = [
+            {
+                id: companyId,
+                type: CompanyType.Shipping,
+                owner: playerId,
+                deeds: [shippingDeed]
+            }
+        ]
+        state.machineState = MachineState.ShippingOperations
+        state.phaseManager.startPhase(PhaseName.Operations, state.actionCount)
+        state.beginCompanyOperation(companyId)
+        state.turnManager.startTurn(playerId, state.actionCount)
+        state.board.areas[fixture.originAreaId] = {
+            id: fixture.originAreaId,
+            type: AreaType.Sea,
+            ships: [companyId]
+        }
+
+        const action = createPassAction(
+            state,
+            playerId,
+            PassReason.FinishOptionalShippingExpansion
+        )
+        action.apply(state)
+
+        const handler = new ShippingOperationsStateHandler()
+        const context = createMachineContext(state)
+        const nextState = handler.onAction(action, context)
+
+        expect(nextState).toBe(MachineState.BiddingForTurnOrder)
+        expect(state.operatedCompanyIds).toEqual([companyId])
+        expect(state.operatingCompanyId).toBeUndefined()
+        expect(state.operatingCompanyExpansionCount).toBeUndefined()
+    })
+
+    it('offers pass when the shipping company has no legal expansion', () => {
+        const state = createTestState()
+        const playerId = state.players[0].playerId
+        const shippingDeed = state.availableDeeds.find(
+            (deed) => deed.type === CompanyType.Shipping && (deed.sizes[state.era] ?? 0) > 0
+        )
+
+        expect(shippingDeed).toBeDefined()
+        if (!shippingDeed || shippingDeed.type !== CompanyType.Shipping) {
+            return
+        }
+
+        const companyId = 'shipping-company'
+        state.companies = [
+            {
+                id: companyId,
+                type: CompanyType.Shipping,
+                owner: playerId,
+                deeds: [shippingDeed]
+            }
+        ]
+        state.machineState = MachineState.ShippingOperations
+        state.phaseManager.startPhase(PhaseName.Operations, state.actionCount)
+        state.beginCompanyOperation(companyId)
+        state.turnManager.startTurn(playerId, state.actionCount)
+
+        const handler = new ShippingOperationsStateHandler()
+        const context = createMachineContext(state)
+        handler.enter(context)
+
+        expect(handler.validActionsForPlayer(playerId, context)).toEqual([ActionType.Pass])
+    })
+
+    it('queues a system no-valid-operation pass when shipping has nothing to do', () => {
+        const state = createTestState()
+        const playerId = state.players[0].playerId
+        const shippingDeed = state.availableDeeds.find(
+            (deed) => deed.type === CompanyType.Shipping && (deed.sizes[state.era] ?? 0) > 0
+        )
+
+        expect(shippingDeed).toBeDefined()
+        if (!shippingDeed || shippingDeed.type !== CompanyType.Shipping) {
+            return
+        }
+
+        const companyId = 'shipping-company'
+        const shippingCapacity = shippingDeed.sizes[state.era] ?? 0
+        state.companies = [
+            {
+                id: companyId,
+                type: CompanyType.Shipping,
+                owner: playerId,
+                deeds: [shippingDeed]
+            }
+        ]
+        state.machineState = MachineState.ShippingOperations
+        state.phaseManager.startPhase(PhaseName.Operations, state.actionCount)
+        state.beginCompanyOperation(companyId)
+        state.turnManager.startTurn(playerId, state.actionCount)
+        state.board.areas.S01 = {
+            id: 'S01',
+            type: AreaType.Sea,
+            ships: Array.from({ length: shippingCapacity }, () => companyId)
+        }
+
+        const handler = new ShippingOperationsStateHandler()
+        const context = createMachineContext(state)
+        handler.enter(context)
+
+        expect(context.getPendingActions()).toHaveLength(1)
+        expect(context.getPendingActions()[0]).toMatchObject({
+            source: ActionSource.System,
+            type: ActionType.Pass,
+            playerId,
+            reason: PassReason.NoValidOperation
+        })
+    })
+
+    it('marks the company as operated and returns to operations when other players still have companies', () => {
+        const state = createTestState()
+        const playerId = state.players[0].playerId
+        const otherPlayerId = state.players[1].playerId
+        const shippingDeed = state.availableDeeds.find(
+            (deed) => deed.type === CompanyType.Shipping && (deed.sizes[state.era] ?? 0) > 1
+        )
+        const fixture = findShippingExpansionFixture(state)
+
+        expect(shippingDeed).toBeDefined()
+        expect(fixture).toBeDefined()
+        if (!shippingDeed || shippingDeed.type !== CompanyType.Shipping || !fixture) {
+            return
+        }
+
+        const companyId = 'shipping-company'
+        state.companies = [
+            {
+                id: companyId,
+                type: CompanyType.Shipping,
+                owner: playerId,
+                deeds: [shippingDeed]
+            },
+            {
+                id: 'other-shipping-company',
+                type: CompanyType.Shipping,
+                owner: otherPlayerId,
+                deeds: [shippingDeed]
+            }
+        ]
+        state.machineState = MachineState.ShippingOperations
+        state.phaseManager.startPhase(PhaseName.Operations, state.actionCount)
+        state.beginCompanyOperation(companyId)
+        state.turnManager.startTurn(playerId, state.actionCount)
+        state.board.areas[fixture.originAreaId] = {
+            id: fixture.originAreaId,
+            type: AreaType.Sea,
+            ships: [companyId]
+        }
+
+        const action = createExpandAction(state, playerId, fixture.firstTargetAreaId)
+        action.apply(state)
+
+        const handler = new ShippingOperationsStateHandler()
+        const context = createMachineContext(state)
+        const nextState = handler.onAction(action, context)
+
+        expect(nextState).toBe(MachineState.Operations)
+        expect(state.operatedCompanyIds).toEqual([companyId])
+        expect(state.operatingCompanyId).toBeUndefined()
+        expect(state.operatingCompanyExpansionCount).toBeUndefined()
+        expect(state.phaseManager.currentPhase?.name).toBe(PhaseName.Operations)
+    })
+})

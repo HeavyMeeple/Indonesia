@@ -1,0 +1,1592 @@
+import type { Point } from '@tabletop/common'
+import { ALL_BOARD_AREAS, boardAreaPathById } from '$lib/definitions/boardGeometry.js'
+import { SEA_SHIP_MARKER_POSITIONS } from '$lib/definitions/seaShipMarkerPositions.js'
+import { resolveLandMarkerPosition } from '$lib/utils/boardMarkers.js'
+import { getPathCenter } from '$lib/utils/geometry.js'
+
+type DeliveryShippingRoutePathInput = {
+    cultivatedAreaId: string
+    cultivatedZoneAreaIds?: readonly string[]
+    firstSeaWaypointOverride?: Point
+    firstSeaWaypointCandidates?: readonly Point[]
+    seaWaypointOverridesByAreaId?: Readonly<Record<string, Point>>
+    blockedShipPoints?: readonly Point[]
+    seaAreaIds: readonly string[]
+    cityAreaId: string
+}
+
+type GridCell = {
+    x: number
+    y: number
+}
+
+type OpenNode = {
+    key: number
+    score: number
+}
+
+type LandShape = {
+    areaId: string
+    path: SVGPathElement
+    bbox: {
+        left: number
+        right: number
+        top: number
+        bottom: number
+    }
+}
+
+type SeaShape = {
+    areaId: string
+    path: SVGPathElement
+    bbox: {
+        left: number
+        right: number
+        top: number
+        bottom: number
+    }
+}
+
+type RoutingContext = {
+    allowedLandAreaIds: ReadonlySet<string>
+    allowedLandAreaIdsSorted: readonly string[]
+    allowedSeaAreaIds: ReadonlySet<string>
+    allowedSeaAreaIdsSorted: readonly string[]
+    blockedShipPoints: readonly Point[]
+    blockedShipRadius: number
+    landInflationPixels: number
+    seaInsetPixels: number
+    cacheKey: string
+}
+
+const SVG_NAMESPACE = 'http://www.w3.org/2000/svg'
+const BOARD_WIDTH = 2646
+const BOARD_HEIGHT = 1280
+const DEFAULT_LAND_INFLATION_PIXELS = 15
+const DEFAULT_SEA_INSET_PIXELS = 0
+const LAND_INFLATION_RETRY_STEPS = [15, 12, 9, 6, 3, 0] as const
+const LONG_DETOUR_RATIO_TRIGGER = 1.45
+const LONG_DETOUR_MIN_EXTRA_PIXELS = 40
+const RELAXED_INFLATION_SCORE_PENALTY = 8
+const RETRY_SWITCH_MIN_RELATIVE_GAIN = 0.03
+const RETRY_SWITCH_MIN_ABSOLUTE_GAIN = 20
+const GRID_STEP = 12
+const GRID_COLS = Math.floor(BOARD_WIDTH / GRID_STEP) + 1
+const GRID_ROWS = Math.floor(BOARD_HEIGHT / GRID_STEP) + 1
+const GRID_CELL_COUNT = GRID_COLS * GRID_ROWS
+const MAX_SEARCH_STEPS = 200_000
+const SEGMENT_SAMPLE_STEP = 6
+const CURVE_CORNER_MAX_RADIUS = 26
+const CURVE_CORNER_RATIO = 0.52
+const SHIP_WAYPOINT_CENTER_PASS_MAX_RADIUS = 34
+const SHIP_WAYPOINT_CENTER_PASS_RATIO = 0.68
+const SHIP_WAYPOINT_CENTER_PASS_MAX_DEGREES = 125
+const SHIP_WAYPOINT_CENTER_PASS_ENTRY_HANDLE_RATIO = 0.84
+const SHIP_WAYPOINT_CENTER_PASS_CENTER_HANDLE_RATIO = 0.46
+const SHIP_WAYPOINT_ANCHOR_RADIUS = 26
+const CURVE_COLLISION_SAMPLE_STEP = 5
+const BLOCKED_SHIP_RADIUS = 26
+
+const EIGHT_WAY_NEIGHBORS = [
+    { dx: -1, dy: -1, cost: Math.SQRT2 },
+    { dx: 0, dy: -1, cost: 1 },
+    { dx: 1, dy: -1, cost: Math.SQRT2 },
+    { dx: -1, dy: 0, cost: 1 },
+    { dx: 1, dy: 0, cost: 1 },
+    { dx: -1, dy: 1, cost: Math.SQRT2 },
+    { dx: 0, dy: 1, cost: 1 },
+    { dx: 1, dy: 1, cost: Math.SQRT2 }
+]
+
+let hiddenSvgRoot: SVGSVGElement | null = null
+const cachedLandShapesByInflation = new Map<number, readonly LandShape[]>()
+const cachedSeaShapesByInset = new Map<number, readonly SeaShape[]>()
+const blockedCellStatesByRoutingKey = new Map<string, Uint8Array>()
+const waterPathByCellPairKey = new Map<string, Point[]>()
+
+const CELL_STATE_UNKNOWN = 0
+const CELL_STATE_BLOCKED = 1
+const CELL_STATE_WATER = 2
+
+function clamp(value: number, min: number, max: number): number {
+    return Math.max(min, Math.min(max, value))
+}
+
+function formatCoordinate(value: number): string {
+    return value.toFixed(1)
+}
+
+function pointDistance(a: Point, b: Point): number {
+    const dx = a.x - b.x
+    const dy = a.y - b.y
+    return Math.hypot(dx, dy)
+}
+
+function polylineLength(points: readonly Point[]): number {
+    if (points.length <= 1) {
+        return 0
+    }
+
+    let length = 0
+    for (let index = 1; index < points.length; index += 1) {
+        length += pointDistance(points[index - 1], points[index])
+    }
+    return length
+}
+
+function cornerAngleDegrees(previous: Point, corner: Point, next: Point): number {
+    const ax = previous.x - corner.x
+    const ay = previous.y - corner.y
+    const bx = next.x - corner.x
+    const by = next.y - corner.y
+    const aLength = Math.hypot(ax, ay)
+    const bLength = Math.hypot(bx, by)
+    if (aLength <= 0 || bLength <= 0) {
+        return 180
+    }
+
+    const cosine = clamp((ax * bx + ay * by) / (aLength * bLength), -1, 1)
+    return (Math.acos(cosine) * 180) / Math.PI
+}
+
+function pointOffset(point: Point, dx: number, dy: number): Point {
+    return {
+        x: point.x + dx,
+        y: point.y + dy
+    }
+}
+
+function normalizeVector(dx: number, dy: number): { x: number; y: number } | null {
+    const length = Math.hypot(dx, dy)
+    if (length <= 0) {
+        return null
+    }
+
+    return {
+        x: dx / length,
+        y: dy / length
+    }
+}
+
+function perpendicularLeft(vector: { x: number; y: number }): { x: number; y: number } {
+    return {
+        x: -vector.y,
+        y: vector.x
+    }
+}
+
+function dotProduct(a: { x: number; y: number }, b: { x: number; y: number }): number {
+    return a.x * b.x + a.y * b.y
+}
+
+function resolveFirstSeaWaypoint(input: DeliveryShippingRoutePathInput): Point | null {
+    if (input.firstSeaWaypointOverride) {
+        return input.firstSeaWaypointOverride
+    }
+
+    const candidateWaypoint = input.firstSeaWaypointCandidates?.[0]
+    if (candidateWaypoint) {
+        return candidateWaypoint
+    }
+
+    const firstSeaAreaId = input.seaAreaIds[0]
+    if (!firstSeaAreaId) {
+        return null
+    }
+
+    return seaWaypointForAreaId(firstSeaAreaId)
+}
+
+function resolveSeaWaypointForArea(
+    input: DeliveryShippingRoutePathInput,
+    seaAreaId: string
+): Point | null {
+    const overridePoint = input.seaWaypointOverridesByAreaId?.[seaAreaId]
+    if (overridePoint) {
+        return overridePoint
+    }
+    return seaWaypointForAreaId(seaAreaId)
+}
+
+function resolveRouteSourceCultivatedAreaId(input: DeliveryShippingRoutePathInput): string {
+    const firstSeaPoint = resolveFirstSeaWaypoint(input)
+    if (!firstSeaPoint) {
+        return input.cultivatedAreaId
+    }
+
+    const zoneAreaIds = input.cultivatedZoneAreaIds
+    if (!zoneAreaIds || zoneAreaIds.length === 0) {
+        return input.cultivatedAreaId
+    }
+
+    let nearestAreaId = input.cultivatedAreaId
+    let nearestDistance = Number.POSITIVE_INFINITY
+    for (const areaId of zoneAreaIds) {
+        const areaPoint = resolveLandMarkerPosition(areaId)
+        if (!areaPoint) {
+            continue
+        }
+
+        const distance = pointDistance(areaPoint, firstSeaPoint)
+        if (distance < nearestDistance) {
+            nearestDistance = distance
+            nearestAreaId = areaId
+        }
+    }
+
+    return nearestAreaId
+}
+
+function pointsAreNear(a: Point, b: Point, epsilon = 0.5): boolean {
+    return pointDistance(a, b) <= epsilon
+}
+
+function appendPointIfNeeded(points: Point[], point: Point): void {
+    const lastPoint = points.at(-1)
+    if (lastPoint && pointsAreNear(lastPoint, point)) {
+        return
+    }
+
+    points.push(point)
+}
+
+function pointToCell(point: Point): GridCell {
+    return {
+        x: clamp(Math.round(point.x / GRID_STEP), 0, GRID_COLS - 1),
+        y: clamp(Math.round(point.y / GRID_STEP), 0, GRID_ROWS - 1)
+    }
+}
+
+function cellToPoint(cell: GridCell): Point {
+    return {
+        x: cell.x * GRID_STEP,
+        y: cell.y * GRID_STEP
+    }
+}
+
+function cellToKey(cell: GridCell): number {
+    return cell.y * GRID_COLS + cell.x
+}
+
+function keyToCell(key: number): GridCell {
+    return {
+        x: key % GRID_COLS,
+        y: Math.floor(key / GRID_COLS)
+    }
+}
+
+function pointLerp(a: Point, b: Point, t: number): Point {
+    return {
+        x: a.x + (b.x - a.x) * t,
+        y: a.y + (b.y - a.y) * t
+    }
+}
+
+function pointToward(from: Point, to: Point, distance: number): Point {
+    const segmentLength = pointDistance(from, to)
+    if (segmentLength <= 0 || distance <= 0) {
+        return from
+    }
+
+    const t = clamp(distance / segmentLength, 0, 1)
+    return {
+        x: from.x + (to.x - from.x) * t,
+        y: from.y + (to.y - from.y) * t
+    }
+}
+
+function createRoutingContext(
+    allowedLandAreaIds: readonly string[],
+    options?: {
+        allowedSeaAreaIds?: readonly string[]
+        blockedShipPoints?: readonly Point[]
+        blockedShipRadius?: number
+        landInflationPixels?: number
+        seaInsetPixels?: number
+    }
+): RoutingContext {
+    const sortedAllowedAreaIds = [...allowedLandAreaIds].sort((a, b) => a.localeCompare(b))
+    const sortedAllowedSeaAreaIds = [...(options?.allowedSeaAreaIds ?? [])].sort((a, b) =>
+        a.localeCompare(b)
+    )
+    const blockedShipPoints = [...(options?.blockedShipPoints ?? [])]
+    const blockedShipRadius = options?.blockedShipRadius ?? BLOCKED_SHIP_RADIUS
+    const landInflationPixels = options?.landInflationPixels ?? DEFAULT_LAND_INFLATION_PIXELS
+    const seaInsetPixels = options?.seaInsetPixels ?? DEFAULT_SEA_INSET_PIXELS
+    const blockedShipPointsKey = blockedShipPoints
+        .map((point) => `${formatCoordinate(point.x)},${formatCoordinate(point.y)}`)
+        .sort((left, right) => left.localeCompare(right))
+        .join(';')
+
+    return {
+        allowedLandAreaIds: new Set(sortedAllowedAreaIds),
+        allowedLandAreaIdsSorted: sortedAllowedAreaIds,
+        allowedSeaAreaIds: new Set(sortedAllowedSeaAreaIds),
+        allowedSeaAreaIdsSorted: sortedAllowedSeaAreaIds,
+        blockedShipPoints,
+        blockedShipRadius,
+        landInflationPixels,
+        seaInsetPixels,
+        cacheKey: `${sortedAllowedAreaIds.join('|')}::sea:${sortedAllowedSeaAreaIds.join('|')}::ships:${blockedShipPointsKey}::r:${formatCoordinate(blockedShipRadius)}::land:${formatCoordinate(landInflationPixels)}::seaInset:${formatCoordinate(seaInsetPixels)}`
+    }
+}
+
+function ensureHiddenSvgRoot(): SVGSVGElement | null {
+    if (typeof document === 'undefined') {
+        return null
+    }
+
+    if (hiddenSvgRoot) {
+        return hiddenSvgRoot
+    }
+
+    const root = document.createElementNS(SVG_NAMESPACE, 'svg')
+    root.setAttribute('width', '0')
+    root.setAttribute('height', '0')
+    root.setAttribute('viewBox', '0 0 0 0')
+    root.setAttribute('aria-hidden', 'true')
+    root.style.position = 'absolute'
+    root.style.width = '0'
+    root.style.height = '0'
+    root.style.opacity = '0'
+    root.style.overflow = 'hidden'
+    root.style.pointerEvents = 'none'
+    root.style.left = '-99999px'
+    root.style.top = '-99999px'
+    document.body.appendChild(root)
+    hiddenSvgRoot = root
+    return root
+}
+
+function ensureLandShapes(landInflationPixels: number): readonly LandShape[] {
+    const cachedShapes = cachedLandShapesByInflation.get(landInflationPixels)
+    if (cachedShapes) {
+        return cachedShapes
+    }
+
+    const root = ensureHiddenSvgRoot()
+    if (!root) {
+        cachedLandShapesByInflation.set(landInflationPixels, [])
+        return []
+    }
+
+    const shapes: LandShape[] = []
+    for (const area of ALL_BOARD_AREAS) {
+        if (area.id.startsWith('S')) {
+            continue
+        }
+
+        const path = document.createElementNS(SVG_NAMESPACE, 'path')
+        path.setAttribute('d', area.path)
+        path.setAttribute('fill', '#000')
+        path.setAttribute('stroke', '#000')
+        path.setAttribute('stroke-width', `${Math.max(0, landInflationPixels * 2)}`)
+        path.setAttribute('stroke-linejoin', 'round')
+        root.appendChild(path)
+
+        const bbox = path.getBBox()
+        shapes.push({
+            areaId: area.id,
+            path,
+            bbox: {
+                left: bbox.x - landInflationPixels,
+                right: bbox.x + bbox.width + landInflationPixels,
+                top: bbox.y - landInflationPixels,
+                bottom: bbox.y + bbox.height + landInflationPixels
+            }
+        })
+    }
+
+    cachedLandShapesByInflation.set(landInflationPixels, shapes)
+    return shapes
+}
+
+function ensureSeaShapes(seaInsetPixels: number): readonly SeaShape[] {
+    const cachedShapes = cachedSeaShapesByInset.get(seaInsetPixels)
+    if (cachedShapes) {
+        return cachedShapes
+    }
+
+    const root = ensureHiddenSvgRoot()
+    if (!root) {
+        cachedSeaShapesByInset.set(seaInsetPixels, [])
+        return []
+    }
+
+    const shapes: SeaShape[] = []
+    for (const area of ALL_BOARD_AREAS) {
+        if (!area.id.startsWith('S')) {
+            continue
+        }
+
+        const path = document.createElementNS(SVG_NAMESPACE, 'path')
+        path.setAttribute('d', area.path)
+        path.setAttribute('fill', '#000')
+        path.setAttribute('stroke', seaInsetPixels > 0 ? '#000' : 'none')
+        path.setAttribute('stroke-width', `${Math.max(0, seaInsetPixels * 2)}`)
+        path.setAttribute('stroke-linejoin', 'round')
+        root.appendChild(path)
+
+        const bbox = path.getBBox()
+        shapes.push({
+            areaId: area.id,
+            path,
+            bbox: {
+                left: bbox.x,
+                right: bbox.x + bbox.width,
+                top: bbox.y,
+                bottom: bbox.y + bbox.height
+            }
+        })
+    }
+
+    cachedSeaShapesByInset.set(seaInsetPixels, shapes)
+    return shapes
+}
+
+function pointInLand(point: Point, routingContext: RoutingContext): boolean {
+    const landShapes = ensureLandShapes(routingContext.landInflationPixels)
+    if (landShapes.length === 0 || typeof DOMPoint === 'undefined') {
+        return false
+    }
+
+    const domPoint = new DOMPoint(point.x, point.y)
+    for (const shape of landShapes) {
+        if (routingContext.allowedLandAreaIds.has(shape.areaId)) {
+            continue
+        }
+
+        if (
+            point.x < shape.bbox.left ||
+            point.x > shape.bbox.right ||
+            point.y < shape.bbox.top ||
+            point.y > shape.bbox.bottom
+        ) {
+            continue
+        }
+
+        if (shape.path.isPointInFill(domPoint) || shape.path.isPointInStroke(domPoint)) {
+            return true
+        }
+    }
+
+    return false
+}
+
+function pointInAllowedLand(point: Point, routingContext: RoutingContext): boolean {
+    if (routingContext.allowedLandAreaIdsSorted.length === 0 || typeof DOMPoint === 'undefined') {
+        return false
+    }
+
+    const landShapes = ensureLandShapes(0)
+    if (landShapes.length === 0) {
+        return false
+    }
+
+    const domPoint = new DOMPoint(point.x, point.y)
+    for (const shape of landShapes) {
+        if (!routingContext.allowedLandAreaIds.has(shape.areaId)) {
+            continue
+        }
+
+        if (
+            point.x < shape.bbox.left ||
+            point.x > shape.bbox.right ||
+            point.y < shape.bbox.top ||
+            point.y > shape.bbox.bottom
+        ) {
+            continue
+        }
+
+        if (shape.path.isPointInFill(domPoint) || shape.path.isPointInStroke(domPoint)) {
+            return true
+        }
+    }
+
+    return false
+}
+
+function pointInAllowedSea(point: Point, routingContext: RoutingContext): boolean {
+    if (routingContext.allowedSeaAreaIdsSorted.length === 0 || typeof DOMPoint === 'undefined') {
+        return false
+    }
+
+    const seaShapes = ensureSeaShapes(0)
+    if (seaShapes.length === 0) {
+        return false
+    }
+
+    const domPoint = new DOMPoint(point.x, point.y)
+    for (const shape of seaShapes) {
+        if (!routingContext.allowedSeaAreaIds.has(shape.areaId)) {
+            continue
+        }
+
+        if (
+            point.x < shape.bbox.left ||
+            point.x > shape.bbox.right ||
+            point.y < shape.bbox.top ||
+            point.y > shape.bbox.bottom
+        ) {
+            continue
+        }
+
+        if (!shape.path.isPointInFill(domPoint)) {
+            continue
+        }
+
+        return true
+    }
+
+    return false
+}
+
+function pointViolatesSeaInset(point: Point, routingContext: RoutingContext): boolean {
+    if (
+        routingContext.seaInsetPixels <= 0 ||
+        routingContext.allowedSeaAreaIdsSorted.length === 0 ||
+        typeof DOMPoint === 'undefined'
+    ) {
+        return false
+    }
+
+    const seaShapes = ensureSeaShapes(routingContext.seaInsetPixels)
+    if (seaShapes.length === 0) {
+        return false
+    }
+
+    const domPoint = new DOMPoint(point.x, point.y)
+    for (const shape of seaShapes) {
+        if (!routingContext.allowedSeaAreaIds.has(shape.areaId)) {
+            continue
+        }
+
+        if (
+            point.x < shape.bbox.left ||
+            point.x > shape.bbox.right ||
+            point.y < shape.bbox.top ||
+            point.y > shape.bbox.bottom
+        ) {
+            continue
+        }
+
+        if (shape.path.isPointInFill(domPoint) && shape.path.isPointInStroke(domPoint)) {
+            return true
+        }
+    }
+
+    return false
+}
+
+function pointOutsideAllowedSeaSpace(point: Point, routingContext: RoutingContext): boolean {
+    if (routingContext.allowedSeaAreaIdsSorted.length === 0) {
+        return false
+    }
+
+    return !pointInAllowedSea(point, routingContext) && !pointInAllowedLand(point, routingContext)
+}
+
+function blockedCellStatesForRoutingContext(routingContext: RoutingContext): Uint8Array {
+    const cachedStates = blockedCellStatesByRoutingKey.get(routingContext.cacheKey)
+    if (cachedStates) {
+        return cachedStates
+    }
+
+    const states = new Uint8Array(GRID_CELL_COUNT)
+    blockedCellStatesByRoutingKey.set(routingContext.cacheKey, states)
+    return states
+}
+
+function pointHitsBlockedShip(point: Point, routingContext: RoutingContext): boolean {
+    for (const shipPoint of routingContext.blockedShipPoints) {
+        if (pointDistance(point, shipPoint) <= routingContext.blockedShipRadius) {
+            return true
+        }
+    }
+
+    return false
+}
+
+function pointIsBlocked(point: Point, routingContext: RoutingContext): boolean {
+    return (
+        pointInLand(point, routingContext) ||
+        pointHitsBlockedShip(point, routingContext) ||
+        pointOutsideAllowedSeaSpace(point, routingContext)
+    )
+}
+
+function isWaterCell(cell: GridCell, routingContext: RoutingContext): boolean {
+    if (cell.x < 0 || cell.x >= GRID_COLS || cell.y < 0 || cell.y >= GRID_ROWS) {
+        return false
+    }
+
+    const cellKey = cellToKey(cell)
+    const blockedCellStates = blockedCellStatesForRoutingContext(routingContext)
+    const cachedState = blockedCellStates[cellKey]
+    if (cachedState !== CELL_STATE_UNKNOWN) {
+        return cachedState === CELL_STATE_WATER
+    }
+
+    const point = cellToPoint(cell)
+    const blocked = pointIsBlocked(point, routingContext) || pointViolatesSeaInset(point, routingContext)
+
+    blockedCellStates[cellKey] = blocked ? CELL_STATE_BLOCKED : CELL_STATE_WATER
+    return !blocked
+}
+
+function nearestWaterCell(
+    cell: GridCell,
+    routingContext: RoutingContext,
+    maxRadius = 10
+): GridCell | null {
+    if (isWaterCell(cell, routingContext)) {
+        return cell
+    }
+
+    for (let radius = 1; radius <= maxRadius; radius += 1) {
+        let found: GridCell | null = null
+        let bestDistance = Number.POSITIVE_INFINITY
+
+        for (let dy = -radius; dy <= radius; dy += 1) {
+            for (let dx = -radius; dx <= radius; dx += 1) {
+                if (Math.abs(dx) !== radius && Math.abs(dy) !== radius) {
+                    continue
+                }
+
+                const candidate: GridCell = {
+                    x: cell.x + dx,
+                    y: cell.y + dy
+                }
+                if (!isWaterCell(candidate, routingContext)) {
+                    continue
+                }
+
+                const distance = Math.hypot(dx, dy)
+                if (distance < bestDistance) {
+                    bestDistance = distance
+                    found = candidate
+                }
+            }
+        }
+
+        if (found) {
+            return found
+        }
+    }
+
+    return null
+}
+
+function heuristicDistance(a: GridCell, b: GridCell): number {
+    return Math.hypot(a.x - b.x, a.y - b.y)
+}
+
+function reconstructPath(goalKey: number, parentByKey: ReadonlyMap<number, number>): GridCell[] {
+    const path: GridCell[] = []
+    let cursor: number | undefined = goalKey
+    while (cursor !== undefined) {
+        path.push(keyToCell(cursor))
+        cursor = parentByKey.get(cursor)
+    }
+    return path.reverse()
+}
+
+function openNodeComesBefore(left: OpenNode, right: OpenNode): boolean {
+    if (left.score !== right.score) {
+        return left.score < right.score
+    }
+
+    return left.key < right.key
+}
+
+function pushOpenNode(openNodes: OpenNode[], node: OpenNode): void {
+    openNodes.push(node)
+
+    let index = openNodes.length - 1
+    while (index > 0) {
+        const parentIndex = Math.floor((index - 1) / 2)
+        if (!openNodeComesBefore(openNodes[index], openNodes[parentIndex])) {
+            break
+        }
+
+        ;[openNodes[index], openNodes[parentIndex]] = [openNodes[parentIndex], openNodes[index]]
+        index = parentIndex
+    }
+}
+
+function popLowestScoreNode(openNodes: OpenNode[]): OpenNode | null {
+    if (openNodes.length === 0) {
+        return null
+    }
+
+    const firstNode = openNodes[0] ?? null
+    const lastNode = openNodes.pop()
+    if (openNodes.length === 0 || !lastNode) {
+        return firstNode
+    }
+
+    openNodes[0] = lastNode
+
+    let index = 0
+    while (true) {
+        const leftChildIndex = index * 2 + 1
+        const rightChildIndex = leftChildIndex + 1
+        let nextIndex = index
+
+        if (
+            leftChildIndex < openNodes.length &&
+            openNodeComesBefore(openNodes[leftChildIndex], openNodes[nextIndex])
+        ) {
+            nextIndex = leftChildIndex
+        }
+
+        if (
+            rightChildIndex < openNodes.length &&
+            openNodeComesBefore(openNodes[rightChildIndex], openNodes[nextIndex])
+        ) {
+            nextIndex = rightChildIndex
+        }
+
+        if (nextIndex === index) {
+            break
+        }
+
+        ;[openNodes[index], openNodes[nextIndex]] = [openNodes[nextIndex], openNodes[index]]
+        index = nextIndex
+    }
+
+    return firstNode
+}
+
+function findWaterGridPath(
+    start: Point,
+    end: Point,
+    routingContext: RoutingContext
+): Point[] | null {
+    const startCell = nearestWaterCell(pointToCell(start), routingContext)
+    const endCell = nearestWaterCell(pointToCell(end), routingContext)
+    if (!startCell || !endCell) {
+        return null
+    }
+
+    const startKey = cellToKey(startCell)
+    const endKey = cellToKey(endCell)
+
+    const openNodes: OpenNode[] = []
+    pushOpenNode(openNodes, {
+        key: startKey,
+        score: heuristicDistance(startCell, endCell)
+    })
+    const gScoreByKey = new Map<number, number>([[startKey, 0]])
+    const parentByKey = new Map<number, number>()
+
+    let iterations = 0
+    while (openNodes.length > 0 && iterations < MAX_SEARCH_STEPS) {
+        iterations += 1
+        const node = popLowestScoreNode(openNodes)
+        if (!node) {
+            break
+        }
+
+        if (node.key === endKey) {
+            return reconstructPath(endKey, parentByKey).map(cellToPoint)
+        }
+
+        const currentCell = keyToCell(node.key)
+        const currentGScore = gScoreByKey.get(node.key)
+        if (currentGScore === undefined) {
+            continue
+        }
+
+        for (const neighborOffset of EIGHT_WAY_NEIGHBORS) {
+            const neighborCell: GridCell = {
+                x: currentCell.x + neighborOffset.dx,
+                y: currentCell.y + neighborOffset.dy
+            }
+            if (!isWaterCell(neighborCell, routingContext)) {
+                continue
+            }
+
+            const neighborKey = cellToKey(neighborCell)
+            const nextGScore = currentGScore + neighborOffset.cost
+            const existingGScore = gScoreByKey.get(neighborKey)
+            if (existingGScore !== undefined && nextGScore >= existingGScore) {
+                continue
+            }
+
+            parentByKey.set(neighborKey, node.key)
+            gScoreByKey.set(neighborKey, nextGScore)
+            const nextScore = nextGScore + heuristicDistance(neighborCell, endCell)
+            pushOpenNode(openNodes, {
+                key: neighborKey,
+                score: nextScore
+            })
+        }
+    }
+
+    return null
+}
+
+function segmentStaysOnWater(start: Point, end: Point, routingContext: RoutingContext): boolean {
+    const segmentLength = pointDistance(start, end)
+    if (segmentLength <= 0) {
+        return !pointIsBlocked(start, routingContext)
+    }
+
+    const sampleCount = Math.max(1, Math.ceil(segmentLength / Math.max(1, GRID_STEP / 2)))
+    let lastCellKey: number | null = null
+    for (let sampleIndex = 0; sampleIndex <= sampleCount; sampleIndex += 1) {
+        const samplePoint = pointLerp(start, end, sampleIndex / sampleCount)
+        const sampleCell = pointToCell(samplePoint)
+        const sampleCellKey = cellToKey(sampleCell)
+        if (sampleCellKey === lastCellKey) {
+            continue
+        }
+
+        if (!isWaterCell(sampleCell, routingContext)) {
+            return false
+        }
+
+        lastCellKey = sampleCellKey
+    }
+
+    return true
+}
+
+function simplifyWaterPath(points: readonly Point[], routingContext: RoutingContext): Point[] {
+    if (points.length <= 2) {
+        return [...points]
+    }
+
+    const simplified: Point[] = [points[0]]
+    let anchorIndex = 0
+    while (anchorIndex < points.length - 1) {
+        let nextIndex = points.length - 1
+        while (nextIndex > anchorIndex + 1) {
+            if (segmentStaysOnWater(points[anchorIndex], points[nextIndex], routingContext)) {
+                break
+            }
+            nextIndex -= 1
+        }
+
+        simplified.push(points[nextIndex])
+        anchorIndex = nextIndex
+    }
+
+    return simplified
+}
+
+function routeThroughWater(
+    start: Point,
+    end: Point,
+    routingContext: RoutingContext
+): Point[] | null {
+    if (typeof document === 'undefined') {
+        return [start, end]
+    }
+
+    if (ensureLandShapes(routingContext.landInflationPixels).length === 0) {
+        return [start, end]
+    }
+
+    if (segmentStaysOnWater(start, end, routingContext)) {
+        return [start, end]
+    }
+
+    const startCell = pointToCell(start)
+    const endCell = pointToCell(end)
+    const forwardKey = `${routingContext.cacheKey}:${startCell.x},${startCell.y}->${endCell.x},${endCell.y}`
+    const cachedForward = waterPathByCellPairKey.get(forwardKey)
+    if (cachedForward) {
+        return cachedForward
+    }
+
+    const reverseKey = `${routingContext.cacheKey}:${endCell.x},${endCell.y}->${startCell.x},${startCell.y}`
+    const cachedReverse = waterPathByCellPairKey.get(reverseKey)
+    if (cachedReverse) {
+        return [...cachedReverse].reverse()
+    }
+
+    const routedPath = findWaterGridPath(start, end, routingContext)
+    if (!routedPath || routedPath.length === 0) {
+        return null
+    }
+
+    const withExactEndpoints = [...routedPath]
+    withExactEndpoints[0] = start
+    withExactEndpoints[withExactEndpoints.length - 1] = end
+
+    const simplifiedPath = simplifyWaterPath(withExactEndpoints, routingContext)
+    waterPathByCellPairKey.set(forwardKey, simplifiedPath)
+    waterPathByCellPairKey.set(reverseKey, [...simplifiedPath].reverse())
+    return simplifiedPath
+}
+
+function routingContextWithLandInflation(
+    baseContext: RoutingContext,
+    landInflationPixels: number
+): RoutingContext {
+    return createRoutingContext(baseContext.allowedLandAreaIdsSorted, {
+        allowedSeaAreaIds: baseContext.allowedSeaAreaIdsSorted,
+        blockedShipPoints: baseContext.blockedShipPoints,
+        blockedShipRadius: baseContext.blockedShipRadius,
+        landInflationPixels,
+        seaInsetPixels: baseContext.seaInsetPixels
+    })
+}
+
+function landInflationRetrySteps(baseLandInflationPixels: number): readonly number[] {
+    const steps = LAND_INFLATION_RETRY_STEPS.filter((step) => step <= baseLandInflationPixels)
+    if (!steps.some((step) => step === baseLandInflationPixels)) {
+        return [baseLandInflationPixels, ...steps]
+    }
+    return steps
+}
+
+function routePathScore(pathLength: number, landInflationPixels: number): number {
+    const relaxedPixels = Math.max(0, DEFAULT_LAND_INFLATION_PIXELS - landInflationPixels)
+    return pathLength + relaxedPixels * relaxedPixels * RELAXED_INFLATION_SCORE_PENALTY
+}
+
+function shouldExploreRelaxedInflationForDetour(
+    path: readonly Point[],
+    start: Point,
+    end: Point
+): boolean {
+    const euclideanLength = pointDistance(start, end)
+    if (euclideanLength <= 0) {
+        return false
+    }
+
+    const pathLength = polylineLength(path)
+    const detourRatio = pathLength / Math.max(1, euclideanLength)
+    const extraDistance = pathLength - euclideanLength
+    return detourRatio >= LONG_DETOUR_RATIO_TRIGGER && extraDistance >= LONG_DETOUR_MIN_EXTRA_PIXELS
+}
+
+function routeThroughWaterWithAdaptiveLandInflation(
+    start: Point,
+    end: Point,
+    baseRoutingContext: RoutingContext
+): Point[] | null {
+    type RouteCandidate = {
+        path: Point[]
+        inflation: number
+        length: number
+        score: number
+    }
+
+    const baseAttempt = routeThroughWater(start, end, baseRoutingContext)
+    const baseAttemptLength = baseAttempt ? polylineLength(baseAttempt) : null
+    const baseCandidate: RouteCandidate | null = baseAttempt
+        ? {
+              path: baseAttempt,
+              inflation: baseRoutingContext.landInflationPixels,
+              length: baseAttemptLength ?? 0,
+              score: routePathScore(baseAttemptLength ?? 0, baseRoutingContext.landInflationPixels)
+          }
+        : null
+
+    const baseIsDetour = baseCandidate
+        ? shouldExploreRelaxedInflationForDetour(baseCandidate.path, start, end)
+        : false
+
+    let bestCandidate = baseCandidate
+    const retryInflations = landInflationRetrySteps(baseRoutingContext.landInflationPixels)
+    for (const landInflationPixels of retryInflations) {
+        if (landInflationPixels === baseRoutingContext.landInflationPixels) {
+            continue
+        }
+
+        const retryContext = routingContextWithLandInflation(baseRoutingContext, landInflationPixels)
+        const attempt = routeThroughWater(start, end, retryContext)
+        if (!attempt) {
+            continue
+        }
+
+        const attemptLength = polylineLength(attempt)
+        const candidate: RouteCandidate = {
+            path: attempt,
+            inflation: landInflationPixels,
+            length: attemptLength,
+            score: routePathScore(attemptLength, landInflationPixels)
+        }
+        if (!bestCandidate || candidate.score < bestCandidate.score) {
+            bestCandidate = candidate
+        }
+    }
+
+    if (!bestCandidate) {
+        return null
+    }
+
+    if (!baseCandidate) {
+        return bestCandidate.path
+    }
+
+    if (bestCandidate.inflation === baseCandidate.inflation) {
+        return baseCandidate.path
+    }
+
+    if (baseIsDetour) {
+        return bestCandidate.path
+    }
+
+    const absoluteGain = baseCandidate.length - bestCandidate.length
+    const relativeGain = absoluteGain / Math.max(1, baseCandidate.length)
+    const shouldSwitch =
+        absoluteGain >= RETRY_SWITCH_MIN_ABSOLUTE_GAIN || relativeGain >= RETRY_SWITCH_MIN_RELATIVE_GAIN
+
+    return shouldSwitch ? bestCandidate.path : baseCandidate.path
+}
+
+function firstWaterPointAlongLineWithAdaptiveLandInflation(
+    landPoint: Point,
+    towardPoint: Point,
+    baseRoutingContext: RoutingContext
+): { point: Point; routingContext: RoutingContext } | null {
+    const firstAttempt = firstWaterPointAlongLine(landPoint, towardPoint, baseRoutingContext)
+    if (firstAttempt) {
+        return {
+            point: firstAttempt,
+            routingContext: baseRoutingContext
+        }
+    }
+
+    const retryInflations = landInflationRetrySteps(baseRoutingContext.landInflationPixels)
+    for (const landInflationPixels of retryInflations) {
+        if (landInflationPixels === baseRoutingContext.landInflationPixels) {
+            continue
+        }
+
+        const retryContext = routingContextWithLandInflation(baseRoutingContext, landInflationPixels)
+        const retryPoint = firstWaterPointAlongLine(landPoint, towardPoint, retryContext)
+        if (!retryPoint) {
+            continue
+        }
+
+        return {
+            point: retryPoint,
+            routingContext: retryContext
+        }
+    }
+
+    return null
+}
+
+function firstWaterPointAlongLine(
+    landPoint: Point,
+    towardPoint: Point,
+    routingContext: RoutingContext
+): Point | null {
+    const samples = 96
+    for (let sampleIndex = 0; sampleIndex <= samples; sampleIndex += 1) {
+        const point = pointLerp(landPoint, towardPoint, sampleIndex / samples)
+        if (!pointIsBlocked(point, routingContext)) {
+            return point
+        }
+    }
+
+    return null
+}
+
+function cubicBezierPoint(
+    start: Point,
+    control1: Point,
+    control2: Point,
+    end: Point,
+    t: number
+): Point {
+    const oneMinusT = 1 - t
+    const oneMinusTSquared = oneMinusT * oneMinusT
+    const oneMinusTCubed = oneMinusTSquared * oneMinusT
+    const tSquared = t * t
+    const tCubed = tSquared * t
+
+    return {
+        x:
+            oneMinusTCubed * start.x +
+            3 * oneMinusTSquared * t * control1.x +
+            3 * oneMinusT * tSquared * control2.x +
+            tCubed * end.x,
+        y:
+            oneMinusTCubed * start.y +
+            3 * oneMinusTSquared * t * control1.y +
+            3 * oneMinusT * tSquared * control2.y +
+            tCubed * end.y
+    }
+}
+
+function cubicCurveStaysOnWater(
+    start: Point,
+    control1: Point,
+    control2: Point,
+    end: Point,
+    routingContext: RoutingContext
+): boolean {
+    const controlPolygonLength =
+        pointDistance(start, control1) +
+        pointDistance(control1, control2) +
+        pointDistance(control2, end)
+    const sampleCount = Math.max(8, Math.ceil(controlPolygonLength / CURVE_COLLISION_SAMPLE_STEP))
+
+    for (let sampleIndex = 1; sampleIndex < sampleCount; sampleIndex += 1) {
+        const samplePoint = cubicBezierPoint(
+            start,
+            control1,
+            control2,
+            end,
+            sampleIndex / sampleCount
+        )
+        if (pointIsBlocked(samplePoint, routingContext)) {
+            return false
+        }
+    }
+
+    return true
+}
+
+function shipWaypointAnchorPoints(
+    shipCenter: Point,
+    towardPoint: Point
+): { entryPoint: Point; exitPoint: Point } {
+    const direction = normalizeVector(towardPoint.x - shipCenter.x, towardPoint.y - shipCenter.y)
+    if (!direction) {
+        return {
+            entryPoint: shipCenter,
+            exitPoint: shipCenter
+        }
+    }
+
+    return {
+        entryPoint: pointOffset(
+            shipCenter,
+            -direction.x * SHIP_WAYPOINT_ANCHOR_RADIUS,
+            -direction.y * SHIP_WAYPOINT_ANCHOR_RADIUS
+        ),
+        exitPoint: pointOffset(
+            shipCenter,
+            direction.x * SHIP_WAYPOINT_ANCHOR_RADIUS,
+            direction.y * SHIP_WAYPOINT_ANCHOR_RADIUS
+        )
+    }
+}
+
+function seaWaypointForAreaId(seaAreaId: string): Point | null {
+    const layout = SEA_SHIP_MARKER_POSITIONS[seaAreaId]
+    if (layout?.[1]?.[0]) {
+        return layout[1][0]
+    }
+
+    const areaPath = boardAreaPathById(seaAreaId)
+    if (!areaPath) {
+        return null
+    }
+
+    return getPathCenter(areaPath)
+}
+
+function pointEqualsAny(point: Point, candidates: readonly Point[], epsilon = 0.5): boolean {
+    return candidates.some((candidate) => pointsAreNear(point, candidate, epsilon))
+}
+
+function pointsToSvgPath(
+    points: readonly Point[],
+    options?: {
+        shipWaypointPoints?: readonly Point[]
+        routingContext?: RoutingContext
+    }
+): string | null {
+    if (points.length === 0) {
+        return null
+    }
+
+    if (points.length === 1) {
+        return `M ${formatCoordinate(points[0].x)} ${formatCoordinate(points[0].y)}`
+    }
+
+    const shipWaypointPoints = options?.shipWaypointPoints ?? []
+    const routingContext = options?.routingContext
+    const pathCommands: string[] = [`M ${formatCoordinate(points[0].x)} ${formatCoordinate(points[0].y)}`]
+    let currentPoint = points[0]
+
+    for (let index = 1; index < points.length - 1; index += 1) {
+        const previous = points[index - 1]
+        const corner = points[index]
+        const next = points[index + 1]
+
+        const visibleIncomingPoint = currentPoint
+        const incomingLength = pointDistance(visibleIncomingPoint, corner)
+        const outgoingLength = pointDistance(corner, next)
+        if (incomingLength <= 0 || outgoingLength <= 0) {
+            if (!pointsAreNear(currentPoint, corner)) {
+                pathCommands.push(`L ${formatCoordinate(corner.x)} ${formatCoordinate(corner.y)}`)
+                currentPoint = corner
+            }
+            continue
+        }
+
+        const isShipWaypoint = pointEqualsAny(corner, shipWaypointPoints)
+        const shouldUseShipCenterPass =
+            isShipWaypoint &&
+            cornerAngleDegrees(visibleIncomingPoint, corner, next) <= SHIP_WAYPOINT_CENTER_PASS_MAX_DEGREES
+        const cornerRadius = Math.min(
+            CURVE_CORNER_MAX_RADIUS,
+            incomingLength * CURVE_CORNER_RATIO,
+            outgoingLength * CURVE_CORNER_RATIO
+        )
+        if (cornerRadius <= 0) {
+            if (!pointsAreNear(currentPoint, corner)) {
+                pathCommands.push(`L ${formatCoordinate(corner.x)} ${formatCoordinate(corner.y)}`)
+                currentPoint = corner
+            }
+            continue
+        }
+
+        if (shouldUseShipCenterPass) {
+            const centerPassRadius = Math.min(
+                SHIP_WAYPOINT_CENTER_PASS_MAX_RADIUS,
+                incomingLength * SHIP_WAYPOINT_CENTER_PASS_RATIO,
+                outgoingLength * SHIP_WAYPOINT_CENTER_PASS_RATIO
+            )
+            const entryPoint = pointToward(corner, visibleIncomingPoint, centerPassRadius)
+            const exitPoint = pointToward(corner, next, centerPassRadius)
+            const previousFromCorner = normalizeVector(
+                visibleIncomingPoint.x - corner.x,
+                visibleIncomingPoint.y - corner.y
+            )
+            const nextFromCorner = normalizeVector(next.x - corner.x, next.y - corner.y)
+            const interiorBisector =
+                previousFromCorner && nextFromCorner
+                    ? normalizeVector(
+                          previousFromCorner.x + nextFromCorner.x,
+                          previousFromCorner.y + nextFromCorner.y
+                      )
+                    : null
+            const overallDirection = normalizeVector(next.x - previous.x, next.y - previous.y)
+            let centerTangent =
+                interiorBisector !== null
+                    ? perpendicularLeft(interiorBisector)
+                    : overallDirection
+            if (centerTangent && overallDirection && dotProduct(centerTangent, overallDirection) < 0) {
+                centerTangent = {
+                    x: -centerTangent.x,
+                    y: -centerTangent.y
+                }
+            }
+
+            if (centerTangent && centerPassRadius > 0) {
+                const entryHandle = pointToward(
+                    entryPoint,
+                    corner,
+                    centerPassRadius * SHIP_WAYPOINT_CENTER_PASS_ENTRY_HANDLE_RATIO
+                )
+                const exitHandle = pointToward(
+                    exitPoint,
+                    corner,
+                    centerPassRadius * SHIP_WAYPOINT_CENTER_PASS_ENTRY_HANDLE_RATIO
+                )
+                const centerHandleDistance =
+                    centerPassRadius * SHIP_WAYPOINT_CENTER_PASS_CENTER_HANDLE_RATIO
+                const centerIncomingHandle = pointOffset(
+                    corner,
+                    -centerTangent.x * centerHandleDistance,
+                    -centerTangent.y * centerHandleDistance
+                )
+                const centerOutgoingHandle = pointOffset(
+                    corner,
+                    centerTangent.x * centerHandleDistance,
+                    centerTangent.y * centerHandleDistance
+                )
+
+                const centerPassIsValid =
+                    !routingContext ||
+                    (cubicCurveStaysOnWater(
+                        entryPoint,
+                        entryHandle,
+                        centerIncomingHandle,
+                        corner,
+                        routingContext
+                    ) &&
+                        cubicCurveStaysOnWater(
+                            corner,
+                            centerOutgoingHandle,
+                            exitHandle,
+                            exitPoint,
+                            routingContext
+                        ))
+
+                if (centerPassIsValid) {
+                    if (!pointsAreNear(currentPoint, entryPoint)) {
+                        pathCommands.push(
+                            `L ${formatCoordinate(entryPoint.x)} ${formatCoordinate(entryPoint.y)}`
+                        )
+                    }
+                    pathCommands.push(
+                        `C ${formatCoordinate(entryHandle.x)} ${formatCoordinate(entryHandle.y)} ${formatCoordinate(centerIncomingHandle.x)} ${formatCoordinate(centerIncomingHandle.y)} ${formatCoordinate(corner.x)} ${formatCoordinate(corner.y)}`
+                    )
+                    pathCommands.push(
+                        `C ${formatCoordinate(centerOutgoingHandle.x)} ${formatCoordinate(centerOutgoingHandle.y)} ${formatCoordinate(exitHandle.x)} ${formatCoordinate(exitHandle.y)} ${formatCoordinate(exitPoint.x)} ${formatCoordinate(exitPoint.y)}`
+                    )
+                    currentPoint = exitPoint
+                    continue
+                }
+            }
+        }
+
+        const entryPoint = pointToward(corner, visibleIncomingPoint, cornerRadius)
+        const exitPoint = pointToward(corner, next, cornerRadius)
+
+        if (!pointsAreNear(currentPoint, entryPoint)) {
+            pathCommands.push(`L ${formatCoordinate(entryPoint.x)} ${formatCoordinate(entryPoint.y)}`)
+        }
+
+        pathCommands.push(
+            `Q ${formatCoordinate(corner.x)} ${formatCoordinate(corner.y)} ${formatCoordinate(exitPoint.x)} ${formatCoordinate(exitPoint.y)}`
+        )
+        currentPoint = exitPoint
+    }
+
+    const lastPoint = points[points.length - 1]
+    if (!pointsAreNear(currentPoint, lastPoint)) {
+        pathCommands.push(`L ${formatCoordinate(lastPoint.x)} ${formatCoordinate(lastPoint.y)}`)
+    }
+
+    return pathCommands.join(' ')
+}
+
+function appendPathSegment(target: Point[], segment: readonly Point[]): void {
+    for (const point of segment) {
+        appendPointIfNeeded(target, point)
+    }
+}
+
+type StartLegSelection = {
+    cultivatedPoint: Point
+    firstSeaPoint: Point
+    startSegment: Point[]
+}
+
+function pickStartLegByShortestRoute(
+    input: DeliveryShippingRoutePathInput,
+    blockedShipPoints: readonly Point[]
+): StartLegSelection | null {
+    const firstSeaPointCandidates = (
+        input.firstSeaWaypointCandidates && input.firstSeaWaypointCandidates.length > 0
+            ? input.firstSeaWaypointCandidates
+            : [resolveFirstSeaWaypoint(input)].filter((point): point is Point => point !== null)
+    ).slice()
+    if (firstSeaPointCandidates.length === 0) {
+        return null
+    }
+
+    const zoneAreaIds = (
+        input.cultivatedZoneAreaIds && input.cultivatedZoneAreaIds.length > 0
+            ? input.cultivatedZoneAreaIds
+            : [input.cultivatedAreaId]
+    ).slice()
+    const startRoutingContext = createRoutingContext(zoneAreaIds, {
+        allowedSeaAreaIds: input.seaAreaIds.slice(0, 1),
+        blockedShipPoints
+    })
+
+    let bestSelection: StartLegSelection | null = null
+    let bestDistance = Number.POSITIVE_INFINITY
+
+    for (const firstSeaPoint of firstSeaPointCandidates) {
+        for (const areaId of zoneAreaIds) {
+            const cultivatedPoint = resolveLandMarkerPosition(areaId)
+            if (!cultivatedPoint) {
+                continue
+            }
+
+            const startSegment = routeThroughWaterWithAdaptiveLandInflation(
+                cultivatedPoint,
+                firstSeaPoint,
+                startRoutingContext
+            )
+            if (!startSegment) {
+                continue
+            }
+
+            const routedDistance = polylineLength(startSegment)
+            if (routedDistance >= bestDistance) {
+                continue
+            }
+
+            bestDistance = routedDistance
+            bestSelection = {
+                cultivatedPoint,
+                firstSeaPoint,
+                startSegment
+            }
+        }
+    }
+
+    return bestSelection
+}
+
+function buildStraightFallbackPath(input: DeliveryShippingRoutePathInput): string | null {
+    if (input.seaAreaIds.length === 0) {
+        return null
+    }
+
+    const points: Point[] = []
+    const sourceCultivatedAreaId = resolveRouteSourceCultivatedAreaId(input)
+    const cultivatedPoint = resolveLandMarkerPosition(sourceCultivatedAreaId)
+    if (cultivatedPoint) {
+        points.push(cultivatedPoint)
+    }
+
+    for (const [seaAreaIndex, seaAreaId] of input.seaAreaIds.entries()) {
+        const seaPoint =
+            seaAreaIndex === 0
+                ? resolveFirstSeaWaypoint(input) ?? resolveSeaWaypointForArea(input, seaAreaId)
+                : resolveSeaWaypointForArea(input, seaAreaId)
+        if (!seaPoint) {
+            return null
+        }
+        appendPointIfNeeded(points, seaPoint)
+    }
+
+    const cityPoint = resolveLandMarkerPosition(input.cityAreaId)
+    if (cityPoint) {
+        appendPointIfNeeded(points, cityPoint)
+    }
+
+    const seaWaypoints = input.seaAreaIds
+        .map((seaAreaId, seaAreaIndex) =>
+            seaAreaIndex === 0
+                ? resolveFirstSeaWaypoint(input) ?? resolveSeaWaypointForArea(input, seaAreaId)
+                : resolveSeaWaypointForArea(input, seaAreaId)
+        )
+        .filter((point): point is Point => point !== null)
+
+    const smoothingRoutingContext = createRoutingContext(
+        [...(input.cultivatedZoneAreaIds ?? [input.cultivatedAreaId]), input.cityAreaId],
+        {
+            allowedSeaAreaIds: input.seaAreaIds,
+            blockedShipPoints: input.blockedShipPoints ?? []
+        }
+    )
+
+    return pointsToSvgPath(points, {
+        shipWaypointPoints: seaWaypoints,
+        routingContext: smoothingRoutingContext
+    })
+}
+
+export function buildDeliveryShippingRoutePath(input: DeliveryShippingRoutePathInput): string | null {
+    const timingStart =
+        typeof performance !== 'undefined' && typeof performance.now === 'function'
+            ? performance.now()
+            : Date.now()
+    const timingLabel = [
+        input.cultivatedAreaId,
+        ...input.seaAreaIds,
+        input.cityAreaId
+    ].join(' -> ')
+
+    try {
+    if (input.seaAreaIds.length === 0) {
+        return null
+    }
+
+    const landShapes = ensureLandShapes(DEFAULT_LAND_INFLATION_PIXELS)
+    if (landShapes.length === 0) {
+        return buildStraightFallbackPath(input)
+    }
+
+    const blockedShipPoints = input.blockedShipPoints ?? []
+    const selectedStartLeg = pickStartLegByShortestRoute(input, blockedShipPoints)
+    if (!selectedStartLeg) {
+        return buildStraightFallbackPath(input)
+    }
+
+    const seaWaypoints: Point[] = [selectedStartLeg.firstSeaPoint]
+    for (let index = 1; index < input.seaAreaIds.length; index += 1) {
+        const seaWaypoint = resolveSeaWaypointForArea(input, input.seaAreaIds[index])
+        if (!seaWaypoint) {
+            return null
+        }
+        seaWaypoints.push(seaWaypoint)
+    }
+
+    const seaRoutingContext = createRoutingContext([], {
+        allowedSeaAreaIds: input.seaAreaIds,
+        blockedShipPoints
+    })
+    const targetRoutingContext = createRoutingContext([input.cityAreaId], {
+        allowedSeaAreaIds: input.seaAreaIds.slice(-1),
+        blockedShipPoints
+    })
+
+    const fullRoutePoints: Point[] = []
+
+    const { cultivatedPoint, startSegment } = selectedStartLeg
+    appendPointIfNeeded(fullRoutePoints, cultivatedPoint)
+    appendPathSegment(fullRoutePoints, startSegment)
+
+    for (let index = 1; index < seaWaypoints.length; index += 1) {
+        const fromCenter = seaWaypoints[index - 1]
+        const toCenter = seaWaypoints[index]
+        const fromAnchors = shipWaypointAnchorPoints(fromCenter, toCenter)
+        const toAnchors = shipWaypointAnchorPoints(toCenter, fromCenter)
+        const seaSegment = routeThroughWaterWithAdaptiveLandInflation(
+            fromAnchors.exitPoint,
+            toAnchors.entryPoint,
+            seaRoutingContext
+        )
+        if (!seaSegment) {
+            return null
+        }
+        appendPointIfNeeded(fullRoutePoints, fromCenter)
+        appendPathSegment(fullRoutePoints, seaSegment)
+        appendPointIfNeeded(fullRoutePoints, toCenter)
+    }
+
+    const cityPoint = resolveLandMarkerPosition(input.cityAreaId)
+    const lastSeaPoint = seaWaypoints[seaWaypoints.length - 1]
+    if (cityPoint) {
+        const cityWaterPointResult = firstWaterPointAlongLineWithAdaptiveLandInflation(
+            cityPoint,
+            lastSeaPoint,
+            targetRoutingContext
+        )
+        if (!cityWaterPointResult) {
+            return null
+        }
+        const endSegment = routeThroughWaterWithAdaptiveLandInflation(
+            lastSeaPoint,
+            cityWaterPointResult.point,
+            cityWaterPointResult.routingContext
+        )
+        if (!endSegment) {
+            return null
+        }
+        appendPathSegment(fullRoutePoints, endSegment)
+        appendPointIfNeeded(fullRoutePoints, cityPoint)
+    }
+
+    const smoothingRoutingContext = createRoutingContext(
+        [...(input.cultivatedZoneAreaIds ?? [input.cultivatedAreaId]), input.cityAreaId],
+        {
+            allowedSeaAreaIds: input.seaAreaIds,
+            blockedShipPoints
+        }
+    )
+
+    return pointsToSvgPath(fullRoutePoints, {
+        shipWaypointPoints: seaWaypoints,
+        routingContext: smoothingRoutingContext
+    })
+    } finally {
+        const timingEnd =
+            typeof performance !== 'undefined' && typeof performance.now === 'function'
+                ? performance.now()
+                : Date.now()
+        console.debug(
+            `[shipping-route] ${timingLabel}: ${(timingEnd - timingStart).toFixed(1)}ms`
+        )
+    }
+}

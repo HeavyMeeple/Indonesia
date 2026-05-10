@@ -1,0 +1,368 @@
+import {
+    GameCategory,
+    GameStatus,
+    GameStorage,
+    PlayerStatus,
+    type Game,
+    type Player,
+    type UninitializedGameState
+} from '@tabletop/common'
+import { describe, expect, it } from 'vitest'
+import { AreaType } from '../components/area.js'
+import { CompanyType } from '../definition/companyType.js'
+import { Era } from '../definition/eras.js'
+import { IndonesiaGameInitializer } from '../definition/initializer.js'
+import { Good } from '../definition/goods.js'
+import { GOOD_REVENUE_BY_GOOD } from '../definition/operationsEconomy.js'
+
+function createTestState() {
+    const players: Player[] = [
+        {
+            id: 'p1',
+            isHuman: true,
+            userId: 'u1',
+            name: 'Player 1',
+            status: PlayerStatus.Joined
+        },
+        {
+            id: 'p2',
+            isHuman: true,
+            userId: 'u2',
+            name: 'Player 2',
+            status: PlayerStatus.Joined
+        }
+    ]
+
+    const game: Game = {
+        id: 'game-1',
+        typeId: 'indonesia',
+        status: GameStatus.Started,
+        isPublic: false,
+        deleted: false,
+        ownerId: 'u1',
+        name: 'Indonesia Test',
+        players,
+        config: {},
+        hotseat: false,
+        winningPlayerIds: [],
+        seed: 123,
+        createdAt: new Date(),
+        storage: GameStorage.Local,
+        category: GameCategory.Standard
+    }
+
+    const state: UninitializedGameState = {
+        id: 'state-1',
+        gameId: game.id,
+        activePlayerIds: [],
+        actionCount: 0,
+        actionChecksum: 0,
+        prng: { seed: 123, invocations: 0 },
+        winningPlayerIds: []
+    }
+
+    return new IndonesiaGameInitializer().initializeGameState(game, state)
+}
+
+describe('HydratedIndonesiaGameState city demand helpers', () => {
+    it('returns zero remaining demand for goods not currently produced on the board', () => {
+        const state = createTestState()
+        state.board.addCity({
+            id: 'city-1',
+            area: 'A01',
+            size: 2,
+            demand: {}
+        })
+
+        const city = state.board.cities[0]
+        expect(state.remainingCityDemandForGood(city, Good.Rice)).toBe(0)
+        expect(state.canCityAcceptGood(city, Good.Rice)).toBe(false)
+    })
+
+    it('tracks delivered demand and remaining demand for produced goods', () => {
+        const state = createTestState()
+        state.board.addCity({
+            id: 'city-1',
+            area: 'A01',
+            size: 2,
+            demand: {
+                [Good.Rice]: 1
+            }
+        })
+        state.board.areas['A02'] = {
+            id: 'A02',
+            type: AreaType.Cultivated,
+            companyId: 'company-1',
+            good: Good.Rice
+        }
+
+        const city = state.board.cities[0]
+        expect(state.currentCityDemandForGood(city, Good.Rice)).toBe(1)
+        expect(state.remainingCityDemandForGood(city, Good.Rice)).toBe(1)
+        expect(state.canCityAcceptGood(city, Good.Rice)).toBe(true)
+    })
+
+    it('records city good deliveries and enforces demand caps', () => {
+        const state = createTestState()
+        state.board.addCity({
+            id: 'city-1',
+            area: 'A01',
+            size: 1,
+            demand: {}
+        })
+        state.board.areas['A02'] = {
+            id: 'A02',
+            type: AreaType.Cultivated,
+            companyId: 'company-1',
+            good: Good.Rice
+        }
+
+        state.recordCityGoodDelivery('city-1', Good.Rice, 1)
+
+        const city = state.board.cities[0]
+        expect(city.demand[Good.Rice]).toBe(1)
+        expect(state.remainingCityDemandForGood(city, Good.Rice)).toBe(0)
+        expect(() => state.recordCityGoodDelivery('city-1', Good.Rice, 1)).toThrow(
+            /exceeds remaining demand/
+        )
+    })
+
+    it('resets city demand at the start of an operations phase', () => {
+        const state = createTestState()
+        state.board.addCity({
+            id: 'city-1',
+            area: 'A01',
+            size: 2,
+            demand: {
+                [Good.Rice]: 1,
+                [Good.Spice]: 2
+            }
+        })
+
+        state.resetCityDemandsForOperationsPhase()
+
+        const city = state.board.cities[0]
+        expect(city.demand).toEqual({})
+    })
+})
+
+describe('HydratedIndonesiaGameState era transition helpers', () => {
+    it('starts a new era when no deeds are available', () => {
+        const state = createTestState()
+        state.availableDeeds = []
+
+        expect(state.shouldStartNewEra()).toBe(true)
+    })
+
+    it('starts a new era when all remaining deeds are production with one good', () => {
+        const state = createTestState()
+        state.availableDeeds = state.availableDeeds
+            .filter((deed) => deed.type === CompanyType.Production)
+            .map((deed) => ({
+                ...deed,
+                good: Good.Spice
+            }))
+
+        expect(state.shouldStartNewEra()).toBe(true)
+    })
+
+    it('starts a new era when all remaining deeds are shipping', () => {
+        const state = createTestState()
+        state.availableDeeds = state.availableDeeds.filter(
+            (deed) => deed.type === CompanyType.Shipping
+        )
+
+        expect(state.shouldStartNewEra()).toBe(true)
+    })
+
+    it('does not start a new era when remaining deeds are mixed', () => {
+        const state = createTestState()
+
+        expect(state.shouldStartNewEra()).toBe(false)
+    })
+
+    it('increments the era in sequence', () => {
+        const state = createTestState()
+
+        state.incrementEra()
+        expect(state.era).toBe(Era.B)
+
+        state.incrementEra()
+        expect(state.era).toBe(Era.C)
+    })
+})
+
+describe('HydratedIndonesiaGameState company operation eligibility', () => {
+    it('counts full-capacity shipping companies as operable until they have operated', () => {
+        const state = createTestState()
+        const playerId = state.players[0].playerId
+        const shippingDeed = state.availableDeeds.find(
+            (deed) => deed.type === CompanyType.Shipping && (deed.sizes[state.era] ?? 0) > 0
+        )
+
+        expect(shippingDeed).toBeDefined()
+        if (!shippingDeed || shippingDeed.type !== CompanyType.Shipping) {
+            return
+        }
+
+        const companyId = 'shipping-full'
+        const shippingCapacity = shippingDeed.sizes[state.era] ?? 0
+        state.companies = [
+            {
+                id: companyId,
+                type: CompanyType.Shipping,
+                owner: playerId,
+                deeds: [shippingDeed]
+            }
+        ]
+        state.board.areas.S01 = {
+            id: 'S01',
+            type: AreaType.Sea,
+            ships: Array.from({ length: shippingCapacity }, () => companyId)
+        }
+
+        expect(state.canCompanyBeOperated(companyId)).toBe(true)
+        expect(state.canPlayerOperateAnyCompany(playerId)).toBe(true)
+    })
+
+    it('counts production companies with no cultivated areas as operable until they have operated', () => {
+        const state = createTestState()
+        const playerId = state.players[0].playerId
+        const productionDeed = state.availableDeeds.find(
+            (deed) => deed.type === CompanyType.Production
+        )
+
+        expect(productionDeed).toBeDefined()
+        if (!productionDeed || productionDeed.type !== CompanyType.Production) {
+            return
+        }
+
+        const companyId = 'production-empty'
+        state.companies = [
+            {
+                id: companyId,
+                type: CompanyType.Production,
+                owner: playerId,
+                deeds: [productionDeed],
+                good: productionDeed.good
+            }
+        ]
+
+        expect(state.canCompanyBeOperated(companyId)).toBe(true)
+        expect(state.canPlayerOperateAnyCompany(playerId)).toBe(true)
+    })
+
+    it('counts production companies that cannot deliver and cannot afford expansion as operable', () => {
+        const state = createTestState()
+        const playerId = state.players[0].playerId
+        const productionDeed = state.availableDeeds.find(
+            (deed) => deed.type === CompanyType.Production
+        )
+
+        expect(productionDeed).toBeDefined()
+        if (!productionDeed || productionDeed.type !== CompanyType.Production) {
+            return
+        }
+
+        const companyId = 'production-no-demand'
+        state.companies = [
+            {
+                id: companyId,
+                type: CompanyType.Production,
+                owner: playerId,
+                deeds: [productionDeed],
+                good: productionDeed.good
+            }
+        ]
+        state.board.areas.A02 = {
+            id: 'A02',
+            type: AreaType.Cultivated,
+            companyId,
+            good: productionDeed.good
+        }
+        state.board.addCity({
+            id: 'city-1',
+            area: 'A01',
+            size: 1,
+            demand: {}
+        })
+        state.players[0].cash = GOOD_REVENUE_BY_GOOD[productionDeed.good] - 1
+
+        expect(state.canCompanyExpand(companyId)).toBe(true)
+
+        expect(state.canCompanyBeOperated(companyId)).toBe(true)
+        expect(state.canPlayerOperateAnyCompany(playerId)).toBe(true)
+    })
+
+    it('counts production companies as operable even when shipping exceeds cash-on-hand', () => {
+        const state = createTestState()
+        const productionOwnerId = state.players[0].playerId
+        const shippingOwnerId = state.players[1].playerId
+        state.companies = [
+            {
+                id: 'prod-1',
+                type: CompanyType.Production,
+                owner: productionOwnerId,
+                deeds: [],
+                good: Good.Rice
+            },
+            {
+                id: 'ship-1',
+                type: CompanyType.Shipping,
+                owner: shippingOwnerId,
+                deeds: []
+            }
+        ]
+        state.board.areas.A01 = {
+            id: 'A01',
+            type: AreaType.Cultivated,
+            companyId: 'prod-1',
+            good: Good.Rice
+        }
+        state.board.areas.S14 = {
+            id: 'S14',
+            type: AreaType.Sea,
+            ships: ['ship-1']
+        }
+        state.board.addCity({
+            id: 'city-1',
+            area: 'A04',
+            size: 1,
+            demand: {}
+        })
+
+        state.getPlayerState(productionOwnerId).cash = 4
+        expect(state.canCompanyBeOperated('prod-1')).toBe(true)
+    })
+})
+
+describe('HydratedIndonesiaGameState operations earnings tracking', () => {
+    it('keeps the operations earnings stack when resetting per-phase operations tracking', () => {
+        const state = createTestState()
+        const playerId = state.players[0].playerId
+        const companyId = 'ops-company'
+        state.companies = [
+            {
+                id: companyId,
+                type: CompanyType.Shipping,
+                owner: playerId,
+                deeds: []
+            }
+        ]
+
+        state.addOperationsIncomeForCompany(companyId, 17)
+        state.operatedCompanyIds = [companyId]
+        state.operationsDeliveredCultivatedAreaIdsByCompanyId = {
+            [companyId]: ['S01']
+        }
+
+        state.resetOperationsTracking()
+
+        expect(state.operatedCompanyIds).toEqual([])
+        expect(state.operationsIncomeByCompanyId).toBeUndefined()
+        expect(state.operationsDeliveredCultivatedAreaIdsByCompanyId).toBeUndefined()
+        expect(state.operationsEarningsByPlayerId).toEqual({
+            [playerId]: 17
+        })
+    })
+})

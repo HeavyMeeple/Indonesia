@@ -1,0 +1,121 @@
+<script lang="ts">
+    import {
+        ScalingWrapper,
+        HistoryControls,
+        DefaultTabs,
+        DefaultTableLayout,
+        CustomFont,
+        GameChat
+    } from '@tabletop/frontend-components'
+    import type { GameSession } from '@tabletop/frontend-components'
+
+    import History from '$lib/components/History.svelte'
+    import PlayersPanel from '$lib/components/PlayersPanel.svelte'
+    import Board from '$lib/components/Board.svelte'
+    import Header from '$lib/components/Header.svelte'
+    import ActionPanel from '$lib/components/ActionPanel.svelte'
+    import GameEndPanel from '$lib/components/GameEndPanel.svelte'
+    import GoodsValueStrip from '$lib/components/GoodsValueStrip.svelte'
+
+    import { IndonesiaGameSession } from '$lib/model/session.svelte.js'
+    import type { HydratedIndonesiaGameState, IndonesiaGameState } from '@tabletop/indonesia'
+    import ScriptinaProFont from '$lib/fonts/ScriptinaPro.woff2'
+    import { setGameSession } from '$lib/model/sessionContext.svelte'
+
+    let {
+        gameSession
+    }: { gameSession: GameSession<IndonesiaGameState, HydratedIndonesiaGameState> } = $props()
+
+    function ensureIndonesiaGameSession(
+        session: GameSession<IndonesiaGameState, HydratedIndonesiaGameState>
+    ): IndonesiaGameSession {
+        if (session instanceof IndonesiaGameSession) {
+            return session
+        }
+        throw new Error('GameTable expected IndonesiaGameSession in gameSession prop.')
+    }
+
+    // svelte-ignore state_referenced_locally
+    setGameSession(ensureIndonesiaGameSession(gameSession))
+</script>
+
+<CustomFont fontFamily="scriptina-pro" url={ScriptinaProFont} format="woff2" />
+
+<!-- Full Height and Width with 8px padding-->
+<div class="bg-[#ede2dc]" style="--chat-height-offset: 52px;">
+    <DefaultTableLayout>
+        {#snippet mobileControlsContent()}
+            <HistoryControls
+                borderClass="border-b border-[#ad9c80]"
+                enabledColor="text-[#7a5d3f]"
+                disabledColor="text-[#b7a181]"
+                bgClass="bg-transparent"
+            />
+        {/snippet}
+        {#snippet sideContent()}
+            <div class="max-sm:hidden">
+                <HistoryControls
+                    borderClass="border-b border-[#ad9c80]"
+                    enabledColor="text-[#7a5d3f]"
+                    disabledColor="text-[#b7a181]"
+                    bgClass="bg-transparent"
+                />
+            </div>
+            <GoodsValueStrip />
+            <DefaultTabs
+                fontClass="gap-1.5 indonesia-tab-title uppercase tracking-[0.08em]"
+                contentClass="p-0 mt-0 h-full overflow-auto rounded-none bg-transparent dark:bg-transparent"
+                activeTabClass="py-1 px-2 text-[#5e3f27] rounded-none"
+                inactiveTabClass="py-1 px-2 text-[#b7a181] hover:text-[#6f5135] rounded-none"
+            >
+                {#snippet playersPanel()}
+                    <PlayersPanel />
+                {/snippet}
+                {#snippet history()}
+                    <History />
+                {/snippet}
+                {#snippet chat()}
+                    <GameChat
+                        timeColor="text-[#8a715a]"
+                        messageTextColor="text-[#5e3f27]"
+                        composerTextColor="text-[#5e3f27]"
+                        messageHoverColor="hover:bg-[#e7dad1]"
+                        inputBgColor="bg-[#f6efe9]"
+                        inputBorderColor="border-[#ad9c80]"
+                        borderColor="border-[#ad9c80]"
+                    />
+                {/snippet}
+            </DefaultTabs>
+        {/snippet}
+        {#snippet gameContent()}
+            <!--  Top part is not allowed to shrink -->
+            <div class="shrink-0">
+                <Header />
+                {#if gameSession.gameState.result}
+                    <GameEndPanel />
+                {:else}
+                    <ActionPanel />
+                {/if}
+            </div>
+            <!--  Bottom part fills the remaining space, but hides overflow to keep it's height fixed.
+              This allows the wrapper to scale to its bounds regardless of its content size-->
+            <div class="grow-0 overflow-hidden min-h-[50dvh]" style="flex:1;">
+                <ScalingWrapper justify="center" controls="bottom-left" expandable={true}>
+                    <Board />
+                </ScalingWrapper>
+            </div>
+        {/snippet}
+    </DefaultTableLayout>
+</div>
+
+<style>
+    :global(.indonesia-font) {
+        font-family: 'scriptina-pro', cursive;
+    }
+
+    :global(.indonesia-tab-title) {
+        font-size: 11px;
+        font-weight: 700;
+        line-height: 1;
+    }
+</style>

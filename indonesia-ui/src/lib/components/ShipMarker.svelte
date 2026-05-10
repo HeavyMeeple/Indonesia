@@ -1,0 +1,190 @@
+<script lang="ts">
+    import ShipAIcon from '$lib/images/ShipAIcon.svelte'
+    import ShipAMaskIcon from '$lib/images/ShipAMaskIcon.svelte'
+    import ShipBIcon from '$lib/images/ShipBIcon.svelte'
+    import ShipBMaskIcon from '$lib/images/ShipBMaskIcon.svelte'
+    import ShipCIcon from '$lib/images/ShipCIcon.svelte'
+    import ShipCMaskIcon from '$lib/images/ShipCMaskIcon.svelte'
+
+    const SHIP_A_VIEWBOX_WIDTH = 386.08
+    const SHIP_A_VIEWBOX_HEIGHT = 297.68
+    const SHIP_B_VIEWBOX_WIDTH = 297.35
+    const SHIP_B_VIEWBOX_HEIGHT = 270.18
+    const SHIP_C_VIEWBOX_WIDTH = 316.96
+    const SHIP_C_VIEWBOX_HEIGHT = 226.87
+
+    let {
+        x,
+        y,
+        style = 'a',
+        height = 20,
+        hullFillColor = '#7ea6ad',
+        hullStrokeColor = 'none',
+        hullStrokeWidth = 0,
+        outline = true,
+        outlineColor = '#333',
+        mask = false,
+        maskColor = '#000',
+        maskOpacity = 0.35,
+        capacityBadgeValue = undefined,
+        capacityBadgeFillColor = '#111827',
+        capacityBadgeTextColor = '#f8fafc'
+    }: {
+        x: number
+        y: number
+        style?: 'a' | 'b' | 'c'
+        height?: number
+        hullFillColor?: string
+        hullStrokeColor?: string
+        hullStrokeWidth?: number
+        outline?: boolean
+        outlineColor?: string
+        mask?: boolean
+        maskColor?: string
+        maskOpacity?: number
+        capacityBadgeValue?: number
+        capacityBadgeFillColor?: string
+        capacityBadgeTextColor?: string
+    } = $props()
+
+    const aspectRatio = $derived(
+        style === 'a'
+            ? SHIP_A_VIEWBOX_WIDTH / SHIP_A_VIEWBOX_HEIGHT
+            : style === 'b'
+              ? SHIP_B_VIEWBOX_WIDTH / SHIP_B_VIEWBOX_HEIGHT
+              : SHIP_C_VIEWBOX_WIDTH / SHIP_C_VIEWBOX_HEIGHT
+    )
+    const width = $derived(height * aspectRatio)
+    const iconX = $derived(x - width / 2)
+    const iconY = $derived(y - height / 2)
+    const outlineWidth = $derived(width)
+    const outlineHeight = $derived(height)
+    const outlineX = $derived(iconX + 1)
+    const outlineY = $derived(iconY + 1)
+    const showCapacityBadge = $derived(
+        typeof capacityBadgeValue === 'number' && Number.isFinite(capacityBadgeValue)
+    )
+    const badgeRadius = $derived(Math.max(8, height * 0.22))
+    const badgeX = $derived(x)
+    const badgeY = $derived(iconY + height)
+    const badgeFontSize = $derived(Math.max(14, badgeRadius * 1.6))
+</script>
+
+<g class="pointer-events-none select-none" aria-hidden="true">
+    {#if outline}
+        {#if style === 'a'}
+            <ShipAMaskIcon
+                x={outlineX}
+                y={outlineY}
+                width={outlineWidth}
+                height={outlineHeight}
+                fill={outlineColor}
+                opacity={0.75}
+                aria-hidden="true"
+            />
+        {:else if style === 'b'}
+            <ShipBMaskIcon
+                x={outlineX}
+                y={outlineY}
+                width={outlineWidth}
+                height={outlineHeight}
+                fill={outlineColor}
+                opacity={0.75}
+                aria-hidden="true"
+            />
+        {:else}
+            <ShipCMaskIcon
+                x={outlineX}
+                y={outlineY}
+                width={outlineWidth}
+                height={outlineHeight}
+                fill={outlineColor}
+                opacity={0.75}
+                aria-hidden="true"
+            />
+        {/if}
+    {/if}
+
+    {#if style === 'a'}
+        <ShipAIcon
+            x={iconX}
+            y={iconY}
+            {width}
+            {height}
+            hullFill={hullFillColor}
+            hullStroke={hullStrokeColor}
+            {hullStrokeWidth}
+        />
+    {:else if style === 'b'}
+        <ShipBIcon
+            x={iconX}
+            y={iconY}
+            {width}
+            {height}
+            hullFill={hullFillColor}
+            hullStroke={hullStrokeColor}
+            {hullStrokeWidth}
+        />
+    {:else}
+        <ShipCIcon
+            x={iconX}
+            y={iconY}
+            {width}
+            {height}
+            hullFill={hullFillColor}
+            hullStroke={hullStrokeColor}
+            {hullStrokeWidth}
+        />
+    {/if}
+
+    {#if mask}
+        {#if style === 'a'}
+            <ShipAMaskIcon
+                x={iconX}
+                y={iconY}
+                {width}
+                {height}
+                fill={maskColor}
+                opacity={maskOpacity}
+                aria-hidden="true"
+            />
+        {:else if style === 'b'}
+            <ShipBMaskIcon
+                x={iconX}
+                y={iconY}
+                {width}
+                {height}
+                fill={maskColor}
+                opacity={maskOpacity}
+                aria-hidden="true"
+            />
+        {:else}
+            <ShipCMaskIcon
+                x={iconX}
+                y={iconY}
+                {width}
+                {height}
+                fill={maskColor}
+                opacity={maskOpacity}
+                aria-hidden="true"
+            />
+        {/if}
+    {/if}
+
+    {#if showCapacityBadge}
+        <g aria-hidden="true">
+            <circle cx={badgeX} cy={badgeY} r={badgeRadius} fill={capacityBadgeFillColor}></circle>
+            <text
+                x={badgeX}
+                y={badgeY + 1}
+                fill={capacityBadgeTextColor}
+                font-size={badgeFontSize}
+                font-weight="700"
+                text-anchor="middle"
+                dominant-baseline="middle"
+            >
+                {capacityBadgeValue}
+            </text>
+        </g>
+    {/if}
+</g>

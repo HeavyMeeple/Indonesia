@@ -99,7 +99,7 @@ let players = [
 ];
 let prodCompanies = [];   // {id, playerId, good, areaIds:[]}
 let shipCompanies = [];   // {id, playerId, hullLevel, ships:{seaId:count}}
-let cities = [];          // {areaId, demands:{good:n}}
+let cities = [];          // {areaId, level:1|2|3}
 let tool = {kind:'none'}; // {kind:'none'|'factory'|'ship'|'city'|'erase', companyId?}
 let lastResults = [];
 
@@ -136,7 +136,7 @@ function handleMapClick(e){
     renderMap(); renderSetup();
   } else if(tool.kind==='city' && best.type==='L'){
     prodCompanies.forEach(c=>{ c.areaIds=c.areaIds.filter(a=>a!==best.id); });
-    if(!cities.find(c=>c.areaId===best.id)) cities.push({areaId:best.id,demands:{}});
+    if(!cities.find(c=>c.areaId===best.id)) cities.push({areaId:best.id,level:1});
     renderMap(); renderSetup();
   } else if(tool.kind==='ship' && best.type==='S'){
     const co = shipCompanies.find(c=>c.id===tool.companyId);
@@ -285,15 +285,11 @@ function renderSetup(){
     </div>
     ${cities.length===0?'<p class="hint">กด "วางเมือง" แล้วคลิก land area</p>':''}
     ${cities.map(city=>`<div style="background:#0f172a;border-radius:5px;padding:5px;margin-bottom:4px">
-      <div style="font-weight:700;font-size:12px;margin-bottom:3px">${city.areaId}
-        <button class="btn danger" style="margin-left:6px" onclick="removeCity('${city.areaId}')">✕</button>
-      </div>
       <div class="row">
-        ${GOODS.map(g=>`<label style="display:flex;align-items:center;gap:2px;font-size:11px">
-          <span style="color:${GOOD_COLOR[g]};font-weight:700">${g[0]}</span>
-          <input type="number" min="0" max="10" value="${city.demands[g]||0}"
-            onchange="setCityDemand('${city.areaId}','${g}',+this.value)" />
-        </label>`).join('')}
+        <span style="font-weight:700;font-size:12px">${city.areaId}</span>
+        <span style="font-size:11px;color:#94a3b8">รับสินค้าอย่างละ</span>
+        ${[1,2,3].map(lv=>`<button class="btn${city.level===lv?' active':''}" style="min-width:28px" onclick="setCityLevel('${city.areaId}',${lv})">${lv}</button>`).join('')}
+        <button class="btn danger" onclick="removeCity('${city.areaId}')">✕</button>
       </div>
     </div>`).join('')}
   </div>`;
@@ -323,7 +319,7 @@ function removeShipCompany(id){ shipCompanies=shipCompanies.filter(c=>c.id!==id)
 function setHull(id,v){ const c=shipCompanies.find(c=>c.id===id); if(c) c.hullLevel=v; }
 function removeShip(cid,sid){ const c=shipCompanies.find(c=>c.id===cid); if(!c) return; if((c.ships[sid]||0)<=1) delete c.ships[sid]; else c.ships[sid]--; renderSetup(); renderMap(); }
 function removeCity(areaId){ cities=cities.filter(c=>c.areaId!==areaId); renderSetup(); renderMap(); }
-function setCityDemand(areaId,good,n){ const c=cities.find(c=>c.areaId===areaId); if(!c) return; if(n<=0) delete c.demands[good]; else c.demands[good]=n; }
+function setCityLevel(areaId,lv){ const c=cities.find(c=>c.areaId===areaId); if(c){ c.level=lv; renderSetup(); } }
 function toggleFactoryTool(id){ setTool(tool.kind==='factory'&&tool.companyId===id?{kind:'none'}:{kind:'factory',companyId:id}); }
 function toggleShipTool(id){ setTool(tool.kind==='ship'&&tool.companyId===id?{kind:'none'}:{kind:'ship',companyId:id}); }
 function toggleCityTool(){ setTool(tool.kind==='city'?{kind:'none'}:{kind:'city'}); }
@@ -362,10 +358,10 @@ function buildZones(company){
 }
 
 function buildCityDemands(good){
-  return cities.filter(c=>(c.demands[good]||0)>0).map(c=>{
+  return cities.filter(c=>c.level>0).map(c=>{
     const adjSea = new Set();
     for(const s of (GRAPH[c.areaId]?.s||[])) if(GRAPH[s]?.t==='S') adjSea.add(s);
-    return {cityId:c.areaId,cityAreaId:c.areaId,adjacentSeaAreaIds:[...adjSea].sort(),remainingDemand:c.demands[good]};
+    return {cityId:c.areaId,cityAreaId:c.areaId,adjacentSeaAreaIds:[...adjSea].sort(),remainingDemand:c.level};
   }).sort((a,b)=>a.cityId.localeCompare(b.cityId));
 }
 

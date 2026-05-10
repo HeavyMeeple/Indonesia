@@ -99,7 +99,7 @@ let players = [
 ];
 let prodCompanies = [];   // {id, playerId, good, areaIds:[]}
 let shipCompanies = [];   // {id, playerId, hullLevel, ships:{seaId:count}}
-let cities = [];          // {areaId, demands:{good:n}}
+let cities = [];          // {areaId, level:1|2|3}
 let tool = {kind:'none'}; // {kind:'none'|'factory'|'ship'|'city'|'erase', companyId?}
 let lastResults = [];
 
@@ -136,7 +136,7 @@ function handleMapClick(e){
     renderMap(); renderSetup();
   } else if(tool.kind==='city' && best.type==='L'){
     prodCompanies.forEach(c=>{ c.areaIds=c.areaIds.filter(a=>a!==best.id); });
-    if(!cities.find(c=>c.areaId===best.id)) cities.push({areaId:best.id,demands:{}});
+    if(!cities.find(c=>c.areaId===best.id)) cities.push({areaId:best.id,level:1});
     renderMap(); renderSetup();
   } else if(tool.kind==='ship' && best.type==='S'){
     const co = shipCompanies.find(c=>c.id===tool.companyId);
@@ -228,24 +228,31 @@ function renderSetup(){
   </div>`;
 
   const prodHtml = `<div class="section">
-    <div class="sec-title" style="margin-bottom:6px">🏭 บริษัทผลิต</div>
+    <div class="sec-title" style="margin-bottom:6px">🏭 บริษัทผลิต <span style="font-weight:400;color:#64748b;font-size:10px">(ลำดับบนสุด = operate ก่อน)</span></div>
     ${players.map(p=>{
-      const myCompanies = prodCompanies.filter(c=>c.playerId===p.id);
-      return `<div style="margin-bottom:8px">
-        <div class="row" style="margin-bottom:4px">
-          <span class="dot" style="background:${p.color}"></span>
-          <span style="font-size:12px;font-weight:600">${p.name}</span>
-          ${GOODS.map(g=>`<button class="btn" style="background:${GOOD_COLOR[g]};color:#fff" onclick="addProdCompany('${p.id}','${g}')">+${g[0]}</button>`).join('')}
-        </div>
-        ${myCompanies.map(co=>`<div class="row" style="margin-bottom:3px;padding-left:18px">
-          <span class="good-pill" style="background:${GOOD_COLOR[co.good]}">${co.good}</span>
-          <span style="color:#94a3b8;font-size:11px">${co.areaIds.length} areas</span>
-          <button class="btn ${tool.kind==='factory'&&tool.companyId===co.id?'active':''}"
-            onclick="toggleFactoryTool('${co.id}')">📍${tool.kind==='factory'&&tool.companyId===co.id?'✓':''} วาง</button>
-          <button class="btn danger" onclick="removeProdCompany('${co.id}')">✕</button>
-        </div>`).join('')}
+      return `<div class="row" style="margin-bottom:4px">
+        <span class="dot" style="background:${p.color}"></span>
+        <span style="font-size:12px;font-weight:600">${p.name}</span>
+        ${GOODS.map(g=>`<button class="btn" style="background:${GOOD_COLOR[g]};color:#fff" onclick="addProdCompany('${p.id}','${g}')">+${g[0]}</button>`).join('')}
       </div>`;
     }).join('')}
+    <div style="margin-top:6px">
+    ${prodCompanies.map((co,idx)=>{
+      const p=players.find(p=>p.id===co.playerId)||{name:'?',color:'#888'};
+      return `<div class="row" style="margin-bottom:4px;background:#0f172a;border-radius:5px;padding:4px 6px">
+        <span style="color:#64748b;font-size:11px;font-weight:700;min-width:16px">${idx+1}.</span>
+        <span class="dot" style="background:${p.color}"></span>
+        <span class="good-pill" style="background:${GOOD_COLOR[co.good]}">${co.good}</span>
+        <span style="color:#94a3b8;font-size:11px;flex:1">${p.name} · ${co.areaIds.length} areas</span>
+        <button class="btn" style="padding:2px 7px" onclick="moveProdCompany('${co.id}',-1)" ${idx===0?'disabled':''}>▲</button>
+        <button class="btn" style="padding:2px 7px" onclick="moveProdCompany('${co.id}',1)" ${idx===prodCompanies.length-1?'disabled':''}>▼</button>
+        <button class="btn ${tool.kind==='factory'&&tool.companyId===co.id?'active':''}"
+          onclick="toggleFactoryTool('${co.id}')">📍 วาง</button>
+        <button class="btn danger" onclick="removeProdCompany('${co.id}')">✕</button>
+      </div>`;
+    }).join('')}
+    ${prodCompanies.length===0?'<p class="hint">เพิ่มบริษัทผลิตด้านบน</p>':''}
+    </div>
   </div>`;
 
   const shipHtml = `<div class="section">
@@ -285,15 +292,11 @@ function renderSetup(){
     </div>
     ${cities.length===0?'<p class="hint">กด "วางเมือง" แล้วคลิก land area</p>':''}
     ${cities.map(city=>`<div style="background:#0f172a;border-radius:5px;padding:5px;margin-bottom:4px">
-      <div style="font-weight:700;font-size:12px;margin-bottom:3px">${city.areaId}
-        <button class="btn danger" style="margin-left:6px" onclick="removeCity('${city.areaId}')">✕</button>
-      </div>
       <div class="row">
-        ${GOODS.map(g=>`<label style="display:flex;align-items:center;gap:2px;font-size:11px">
-          <span style="color:${GOOD_COLOR[g]};font-weight:700">${g[0]}</span>
-          <input type="number" min="0" max="10" value="${city.demands[g]||0}"
-            onchange="setCityDemand('${city.areaId}','${g}',+this.value)" />
-        </label>`).join('')}
+        <span style="font-weight:700;font-size:12px">${city.areaId}</span>
+        <span style="font-size:11px;color:#94a3b8">รับสินค้าอย่างละ</span>
+        ${[1,2,3].map(lv=>`<button class="btn${city.level===lv?' active':''}" style="min-width:28px" onclick="setCityLevel('${city.areaId}',${lv})">${lv}</button>`).join('')}
+        <button class="btn danger" onclick="removeCity('${city.areaId}')">✕</button>
       </div>
     </div>`).join('')}
   </div>`;
@@ -322,8 +325,16 @@ function addShipCompany(pid){ shipCompanies.push({id:mkId(),playerId:pid,hullLev
 function removeShipCompany(id){ shipCompanies=shipCompanies.filter(c=>c.id!==id); if(tool.kind==='ship'&&tool.companyId===id) setTool({kind:'none'}); else{ renderSetup(); } }
 function setHull(id,v){ const c=shipCompanies.find(c=>c.id===id); if(c) c.hullLevel=v; }
 function removeShip(cid,sid){ const c=shipCompanies.find(c=>c.id===cid); if(!c) return; if((c.ships[sid]||0)<=1) delete c.ships[sid]; else c.ships[sid]--; renderSetup(); renderMap(); }
+function moveProdCompany(id,dir){
+  const idx=prodCompanies.findIndex(c=>c.id===id);
+  if(idx<0) return;
+  const to=idx+dir;
+  if(to<0||to>=prodCompanies.length) return;
+  [prodCompanies[idx],prodCompanies[to]]=[prodCompanies[to],prodCompanies[idx]];
+  renderSetup();
+}
 function removeCity(areaId){ cities=cities.filter(c=>c.areaId!==areaId); renderSetup(); renderMap(); }
-function setCityDemand(areaId,good,n){ const c=cities.find(c=>c.areaId===areaId); if(!c) return; if(n<=0) delete c.demands[good]; else c.demands[good]=n; }
+function setCityLevel(areaId,lv){ const c=cities.find(c=>c.areaId===areaId); if(c){ c.level=lv; renderSetup(); } }
 function toggleFactoryTool(id){ setTool(tool.kind==='factory'&&tool.companyId===id?{kind:'none'}:{kind:'factory',companyId:id}); }
 function toggleShipTool(id){ setTool(tool.kind==='ship'&&tool.companyId===id?{kind:'none'}:{kind:'ship',companyId:id}); }
 function toggleCityTool(){ setTool(tool.kind==='city'?{kind:'none'}:{kind:'city'}); }
@@ -361,11 +372,11 @@ function buildZones(company){
   });
 }
 
-function buildCityDemands(good){
-  return cities.filter(c=>(c.demands[good]||0)>0).map(c=>{
+function buildCityDemands(remainingDemand){
+  return cities.filter(c=>(remainingDemand[c.areaId]||0)>0).map(c=>{
     const adjSea = new Set();
     for(const s of (GRAPH[c.areaId]?.s||[])) if(GRAPH[s]?.t==='S') adjSea.add(s);
-    return {cityId:c.areaId,cityAreaId:c.areaId,adjacentSeaAreaIds:[...adjSea].sort(),remainingDemand:c.demands[good]};
+    return {cityId:c.areaId,cityAreaId:c.areaId,adjacentSeaAreaIds:[...adjSea].sort(),remainingDemand:remainingDemand[c.areaId]};
   }).sort((a,b)=>a.cityId.localeCompare(b.cityId));
 }
 
@@ -556,19 +567,29 @@ function runCalculate(){
   errBar.style.display='none';
   try{
     const shipNetworks = buildShipNetworks();
-    lastResults = prodCompanies.map(co=>{
+
+    // Each city starts with full demand; companies consume it in operate order
+    const remaining = {};
+    for(const city of cities) remaining[city.areaId] = city.level;
+
+    lastResults = prodCompanies.map((co,idx)=>{
       const player = players.find(p=>p.id===co.playerId)||{name:'?',color:'#888'};
       const ownedShipIds = shipCompanies.filter(s=>s.playerId===co.playerId).map(s=>s.id);
+      const demandSnapshot = {...remaining};  // demand available to this company
       const plan = solveDelivery({
         operatingCompanyId:co.id,
         good:co.good,
         shippingFeePerShipUse:SHIP_FEE,
         ownedShippingCompanyIds:ownedShipIds,
         zoneSupplies:buildZones(co),
-        cityDemands:buildCityDemands(co.good),
+        cityDemands:buildCityDemands(remaining),
         shippingCompanyNetworks:shipNetworks
       });
-      return {company:co,player,plan};
+      // Deduct delivered goods from remaining city demand
+      for(const d of plan.deliveries){
+        remaining[d.cityId] = Math.max(0,(remaining[d.cityId]||0)-d.quantity);
+      }
+      return {company:co,player,plan,operateOrder:idx+1,demandSnapshot};
     });
     renderResults();
     switchTab('results');
@@ -584,10 +605,16 @@ function renderResults(){
   if(!lastResults.length){ el.innerHTML='<p class="hint">กด ⚡ Calculate เพื่อคำนวณ</p>'; return; }
 
   let html='';
-  for(const {company:co,player,plan} of lastResults){
+  for(const {company:co,player,plan,operateOrder,demandSnapshot} of lastResults){
     const gc=GOOD_COLOR[co.good];
+    // Show which cities had reduced demand by the time this company operated
+    const reducedCities=cities.filter(c=>(demandSnapshot[c.areaId]||0)<c.level);
+    const reducedNote=reducedCities.length
+      ? `<span style="color:#fbbf24;font-size:10px">⚠ demand ลดแล้ว: ${reducedCities.map(c=>`${c.areaId}(${demandSnapshot[c.areaId]||0}/${c.level})`).join(', ')}</span>`
+      : '';
     html+=`<div class="r-company">
       <div class="r-hdr">
+        <span style="color:#64748b;font-size:11px;font-weight:700;min-width:20px">#${operateOrder}</span>
         <span class="good-pill" style="background:${gc}">${co.good}</span>
         <span style="color:${player.color};font-weight:700">${player.name}</span>
         <div class="r-nums">
@@ -596,7 +623,8 @@ function renderResults(){
           <span class="num-b" style="color:${plan.netIncome>=0?'#4ade80':'#f87171'}">= $${plan.netIncome}</span>
           <span style="color:#94a3b8;font-size:11px">${plan.totalDelivered} goods</span>
         </div>
-      </div>`;
+      </div>
+      ${reducedNote}`;
     if(plan.deliveries.length===0){
       html+=`<p style="color:#64748b;font-style:italic;font-size:11px">ไม่มีเส้นทางส่งสินค้า</p>`;
     } else {

@@ -633,6 +633,16 @@ function renderResults(){
 }
 
 // ── Init ─────────────────────────────────────────────────────────────────────
+// Patch GRAPH: sea areas list adjacent land areas, but land areas were missing
+// the reverse entries. Build bidirectional adjacency so delivery works correctly.
+for(const [seaId, node] of Object.entries(GRAPH)){
+  if(node.t!=='S') continue;
+  for(const landId of node.l){
+    if(GRAPH[landId]?.t==='L' && !GRAPH[landId].s.includes(seaId)){
+      GRAPH[landId].s.push(seaId);
+    }
+  }
+}
 renderMap();
 renderSetup();
 </script>

@@ -1,0 +1,626 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Indonesia – Operations Calculator</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0f172a;color:#e2e8f0;font-family:system-ui,sans-serif;height:100vh;overflow:hidden;display:flex;flex-direction:column}
+header{display:flex;align-items:center;justify-content:space-between;padding:8px 14px;background:#1e293b;border-bottom:1px solid #334155;flex-shrink:0}
+h1{font-size:15px;font-weight:700;color:#f1f5f9}
+.layout{display:flex;flex:1;overflow:hidden}
+#map-pane{flex:1;overflow:hidden;background:#bfdbfe;position:relative}
+#map-svg{width:100%;height:100%;cursor:crosshair}
+.side{width:330px;flex-shrink:0;background:#0f172a;border-left:1px solid #334155;display:flex;flex-direction:column;overflow:hidden}
+.tabs{display:flex;border-bottom:1px solid #334155;flex-shrink:0}
+.tab{flex:1;padding:8px;background:none;border:none;color:#64748b;cursor:pointer;font-size:13px;font-weight:600;border-bottom:2px solid transparent}
+.tab.active{color:#e2e8f0;border-bottom-color:#3b82f6}
+.tab-content{flex:1;overflow-y:auto;padding:8px}
+.section{background:#1e293b;border-radius:8px;padding:8px;margin-bottom:8px}
+.sec-hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+.sec-title{font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em}
+.row{display:flex;align-items:center;gap:6px;margin-bottom:4px;flex-wrap:wrap}
+.dot{width:11px;height:11px;border-radius:50%;flex-shrink:0}
+input[type=text]{flex:1;background:#0f172a;border:1px solid #334155;border-radius:4px;padding:2px 6px;color:#e2e8f0;font-size:13px;min-width:0}
+input[type=number]{width:38px;background:#0f172a;border:1px solid #334155;border-radius:4px;padding:2px 4px;color:#e2e8f0;font-size:12px;text-align:center}
+select{background:#0f172a;border:1px solid #334155;border-radius:4px;padding:2px 4px;color:#e2e8f0;font-size:11px}
+.btn{background:#334155;border:none;border-radius:4px;padding:3px 9px;color:#e2e8f0;cursor:pointer;font-size:11px;white-space:nowrap}
+.btn:hover{background:#475569}
+.btn.active{background:#3b82f6;color:#fff}
+.btn.danger{background:#7f1d1d;color:#fca5a5}
+.btn.green{background:#15803d;color:#bbf7d0}
+.badge{display:inline-flex;align-items:center;justify-content:center;background:#3b82f6;color:#fff;border-radius:10px;width:17px;height:17px;font-size:10px;margin-left:3px}
+.good-pill{padding:1px 7px;border-radius:10px;color:#fff;font-size:10px;font-weight:700;white-space:nowrap}
+.hint{color:#64748b;font-size:11px;text-align:center;padding:8px}
+.tool-bar{background:#1e3a5f;border-radius:6px;padding:6px 10px;display:flex;justify-content:space-between;align-items:center;color:#93c5fd;font-size:12px;margin-bottom:6px;gap:8px}
+.tool-bar.on{background:#1e40af;color:#fff}
+/* Results */
+.r-company{background:#1e293b;border-radius:8px;padding:8px;margin-bottom:8px}
+.r-hdr{display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap}
+.r-nums{margin-left:auto;display:flex;gap:8px;align-items:center}
+.num-g{color:#4ade80;font-weight:700}
+.num-r{color:#f87171;font-weight:700}
+.num-b{font-size:15px;font-weight:800}
+table{width:100%;border-collapse:collapse;font-size:11px}
+th{text-align:left;padding:3px 5px;color:#64748b;border-bottom:1px solid #334155}
+td{padding:3px 5px;border-bottom:1px solid #1e293b;color:#e2e8f0}
+.sea-path{color:#7dd3fc}
+.ship-tag{background:#0f172a;border:1px solid #334155;border-radius:3px;padding:1px 5px;font-size:10px;margin:2px}
+.totals-section{background:#0f172a;border-radius:8px;padding:10px;margin-top:4px}
+.player-total{display:flex;align-items:center;gap:10px;padding:5px 8px;margin-bottom:4px;background:#1e293b;border-radius:6px;flex-wrap:wrap;border-left:4px solid transparent}
+#error-bar{background:#7f1d1d;color:#fca5a5;padding:6px 12px;font-size:12px;display:none;flex-shrink:0}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🏝 Indonesia – Operations Calculator</h1>
+  <button class="btn green" onclick="runCalculate()" style="font-size:13px;padding:6px 16px;font-weight:700">⚡ Calculate</button>
+</header>
+<div id="error-bar"></div>
+
+<div class="layout">
+  <div id="map-pane">
+    <svg id="map-svg" viewBox="0 0 2600 1150" onclick="handleMapClick(event)"></svg>
+  </div>
+  <div class="side">
+    <div class="tabs">
+      <button class="tab active" id="tab-setup" onclick="switchTab('setup')">⚙ Setup</button>
+      <button class="tab" id="tab-results" onclick="switchTab('results')">📊 Results <span id="results-badge" class="badge" style="display:none"></span></button>
+    </div>
+    <div class="tab-content" id="pane-setup"></div>
+    <div class="tab-content" id="pane-results" style="display:none"></div>
+  </div>
+</div>
+
+<script>
+// ── Graph Data ──────────────────────────────────────────────────────────────
+const GRAPH = {"A01":{"t":"L","l":["A03","A04"],"s":["S14"]},"A02":{"t":"L","l":["A03","A05"],"s":["S14"]},"A03":{"t":"L","l":["A01","A02","A04","A08"],"s":["S14"]},"A04":{"t":"L","l":["A01","A03","A07"],"s":["S14"]},"A05":{"t":"L","l":["A02","A06","A08"],"s":[]},"A06":{"t":"L","l":["A05","A09"],"s":[]},"A07":{"t":"L","l":["A04","A08","A10"],"s":[]},"A08":{"t":"L","l":["A03","A05","A07","A10","A11","A12"],"s":["S14"]},"A09":{"t":"L","l":["A06","A13"],"s":[]},"A10":{"t":"L","l":["A07","A08","A12","A16"],"s":[]},"A11":{"t":"L","l":["A08","A12","A13","A15"],"s":[]},"A12":{"t":"L","l":["A08","A10","A11","A15","A16"],"s":[]},"A13":{"t":"L","l":["A09","A11","A14","A15","A18"],"s":[]},"A14":{"t":"L","l":["A13","A17","A18"],"s":[]},"A15":{"t":"L","l":["A11","A12","A13","A16","A19"],"s":[]},"A16":{"t":"L","l":["A10","A12","A15","A19"],"s":[]},"A17":{"t":"L","l":["A14","A18","A20","A21","A24"],"s":[]},"A18":{"t":"L","l":["A13","A14","A17","A19","A20","A23"],"s":[]},"A19":{"t":"L","l":["A15","A16","A18","A23","A26"],"s":[]},"A20":{"t":"L","l":["A17","A18","A24","A27","A28"],"s":[]},"A21":{"t":"L","l":["A17","A22","A24"],"s":[]},"A22":{"t":"L","l":["A21","A24","A29","A34"],"s":[]},"A23":{"t":"L","l":["A18","A19","A25","A28"],"s":[]},"A24":{"t":"L","l":["A17","A20","A21","A22","A27"],"s":[]},"A25":{"t":"L","l":["A23","A28"],"s":[]},"A26":{"t":"L","l":["A19"],"s":[]},"A27":{"t":"L","l":["A20","A24","A28","A29","A31"],"s":[]},"A28":{"t":"L","l":["A20","A23","A25","A27","A31"],"s":[]},"A29":{"t":"L","l":["A22","A27","A30","A34"],"s":[]},"A30":{"t":"L","l":["A29","A31","A34"],"s":[]},"A31":{"t":"L","l":["A27","A28","A30","A32"],"s":[]},"A32":{"t":"L","l":["A31","A33"],"s":[]},"A33":{"t":"L","l":["A32"],"s":[]},"A34":{"t":"L","l":["A22","A29","A30"],"s":[]},"B01":{"t":"L","l":["B02","B03"],"s":[]},"B02":{"t":"L","l":["B01","B03","B04","B05"],"s":[]},"B03":{"t":"L","l":["B01","B02","B04","B09","B10"],"s":[]},"B04":{"t":"L","l":["B02","B03","B07","B10"],"s":[]},"B05":{"t":"L","l":["B02","B06","B07"],"s":[]},"B06":{"t":"L","l":["B05","B07","B08"],"s":[]},"B07":{"t":"L","l":["B04","B05","B06","B08","B10","B11","B16"],"s":[]},"B08":{"t":"L","l":["B06","B07","B11"],"s":[]},"B09":{"t":"L","l":["B03","B10","B13","B18","B19"],"s":[]},"B10":{"t":"L","l":["B03","B04","B07","B09","B16","B18","B20"],"s":[]},"B11":{"t":"L","l":["B07","B08","B12","B15","B16","B17"],"s":[]},"B12":{"t":"L","l":["B11","B14","B15"],"s":[]},"B13":{"t":"L","l":["B09","B19"],"s":[]},"B14":{"t":"L","l":["B12","B15"],"s":[]},"B15":{"t":"L","l":["B11","B12","B14","B17"],"s":[]},"B16":{"t":"L","l":["B07","B10","B11","B17","B20"],"s":[]},"B17":{"t":"L","l":["B11","B15","B16"],"s":[]},"B18":{"t":"L","l":["B09","B10","B19","B20"],"s":[]},"B19":{"t":"L","l":["B09","B13","B18"],"s":[]},"B20":{"t":"L","l":["B10","B16","B18"],"s":[]},"C01":{"t":"L","l":["C02","C03"],"s":[]},"C02":{"t":"L","l":["C01","C03","C04","C05"],"s":[]},"C03":{"t":"L","l":["C01","C02","C05"],"s":[]},"C04":{"t":"L","l":["C02","C05","C06","C07"],"s":[]},"C05":{"t":"L","l":["C02","C03","C04","C07"],"s":[]},"C06":{"t":"L","l":["C04","C07","C08"],"s":[]},"C07":{"t":"L","l":["C04","C05","C06","C08"],"s":[]},"C08":{"t":"L","l":["C06","C07","C09"],"s":[]},"C09":{"t":"L","l":["C08","C10","C11"],"s":[]},"C10":{"t":"L","l":["C09","C11","C14"],"s":[]},"C11":{"t":"L","l":["C09","C10","C12","C14"],"s":[]},"C12":{"t":"L","l":["C11","C13","C14","C16"],"s":[]},"C13":{"t":"L","l":["C12","C14","C15"],"s":[]},"C14":{"t":"L","l":["C10","C11","C12","C13"],"s":[]},"C15":{"t":"L","l":["C13","C17"],"s":[]},"C16":{"t":"L","l":["C12"],"s":[]},"C17":{"t":"L","l":["C15","C21"],"s":[]},"C18":{"t":"L","l":["C19","C29"],"s":[]},"C19":{"t":"L","l":["C18","C20"],"s":[]},"C20":{"t":"L","l":["C19","F04"],"s":[]},"C21":{"t":"L","l":["C17","C22"],"s":[]},"C22":{"t":"L","l":["C21","C23"],"s":[]},"C23":{"t":"L","l":["C22","C24"],"s":[]},"C24":{"t":"L","l":["C23","C25"],"s":[]},"C25":{"t":"L","l":["C24","C26","C28"],"s":[]},"C26":{"t":"L","l":["C25"],"s":[]},"C27":{"t":"L","l":["C29"],"s":[]},"C28":{"t":"L","l":["C25","C29"],"s":[]},"C29":{"t":"L","l":["C27","C28","C30","C18"],"s":[]},"C30":{"t":"L","l":["C29"],"s":[]},"D01":{"t":"L","l":["D02","D04"],"s":[]},"D02":{"t":"L","l":["D01","D03","D12"],"s":[]},"D03":{"t":"L","l":["D02"],"s":[]},"D04":{"t":"L","l":["D01","D05","D07","D08"],"s":[]},"D05":{"t":"L","l":["D04","D06","D08","D09","D12"],"s":[]},"D06":{"t":"L","l":["D05"],"s":[]},"D07":{"t":"L","l":["D04","D08"],"s":[]},"D08":{"t":"L","l":["D04","D05","D07","D09","D11"],"s":[]},"D09":{"t":"L","l":["D05","D08","D10"],"s":[]},"D10":{"t":"L","l":["D09","D13"],"s":[]},"D11":{"t":"L","l":["D08"],"s":[]},"D12":{"t":"L","l":["D02","D05"],"s":[]},"D13":{"t":"L","l":["D10"],"s":[]},"E01":{"t":"L","l":["E10"],"s":[]},"E02":{"t":"L","l":["E03"],"s":[]},"E03":{"t":"L","l":["E02","E04","E05","E10"],"s":[]},"E04":{"t":"L","l":["E03","E05"],"s":[]},"E05":{"t":"L","l":["E03","E04"],"s":[]},"E06":{"t":"L","l":["E08","E12"],"s":[]},"E07":{"t":"L","l":["E09","E11"],"s":[]},"E08":{"t":"L","l":["E06","E09"],"s":[]},"E09":{"t":"L","l":["E07","E08"],"s":[]},"E10":{"t":"L","l":["E01","E03"],"s":[]},"E11":{"t":"L","l":["E07"],"s":[]},"E12":{"t":"L","l":["E06"],"s":["S01"]},"F01":{"t":"L","l":["F02","F04"],"s":[]},"F02":{"t":"L","l":["F01","F04","F05"],"s":[]},"F03":{"t":"L","l":["F05","F06","F07"],"s":[]},"F04":{"t":"L","l":["C20","F01","F02","F05"],"s":[]},"F05":{"t":"L","l":["F02","F03","F04"],"s":[]},"F06":{"t":"L","l":["F03"],"s":[]},"F07":{"t":"L","l":["F03"],"s":[]},"S01":{"t":"S","l":["E12","E06","E05","E04","E03","E02","E10","E01"],"s":["S20","S07","S02","S12","S17"]},"S02":{"t":"S","l":["B19","B18","B20","B16","B17","D08","D07","D04","D01","D02"],"s":["S01","S12","S05","S13","S17"]},"S03":{"t":"S","l":["A21","A22","A34","C01","C02","C04","C06"],"s":["S06","S10","S16"]},"S04":{"t":"S","l":["C19","C20","F05","F04","F01"],"s":["S07","S20"]},"S05":{"t":"S","l":["B01","B03","B09","B13"],"s":["S14","S09","S21","S11","S02"]},"S06":{"t":"S","l":["A05","A06","A09","A08","A11","A13","A14","A17","A21"],"s":["S14","S03"]},"S07":{"t":"S","l":["E08","E09","E07","E11","C18"],"s":["S08","S17","S01","S20","S04"]},"S08":{"t":"S","l":["C25","C28","C30","C27","C29"],"s":["S18","S17","S07"]},"S09":{"t":"S","l":["A04","A07","A10","A16"],"s":["S14","S05","S21"]},"S10":{"t":"S","l":["C06","C08","C09","C10","C14","C13","C15","C17","C21"],"s":["S03","S18","S15"]},"S11":{"t":"S","l":["A33","B01","B02","B05","B06"],"s":["S13","S15","S16","S19","S21","S05"]},"S12":{"t":"S","l":["D03","D02","D01","D04","D05","D06","D09","D12"],"s":["S02","S01","S17"]},"S13":{"t":"S","l":["B06","B08","B11","B12","B14","B15","B17"],"s":["S02","S17","S18","S15","S11"]},"S14":{"t":"S","l":["A01","A02","A03","A04","A08"],"s":["S09","S05","S06"]},"S15":{"t":"S","l":["C09","C11","C12","C16","C13","C15","C17","C21"],"s":["S16","S11","S13","S18","S10"]},"S16":{"t":"S","l":["A34","A30","C01","C03","C05","C07","C08","C09"],"s":["S19","S11","S15","S03"]},"S17":{"t":"S","l":["D11","D08","D09","D10","D13"],"s":["S13","S18","S08","S07","S01","S02","S12"]},"S18":{"t":"S","l":["C21","C22","C23","C24","C26"],"s":["S10","S15","S13","S17","S08"]},"S19":{"t":"S","l":["A25","A28","A31","A30","A32"],"s":["S11","S16","S21"]},"S20":{"t":"S","l":["F06","F03","F05","F07","F02"],"s":["S01","S07","S04"]},"S21":{"t":"S","l":["A16","A19","A23","A25","A26"],"s":["S19","S11","S05","S09"]}};
+
+// ── Positions ────────────────────────────────────────────────────────────────
+const LAND_POS = {"A01":[125,191],"A02":[125,323],"A03":[201,268],"A04":[204,200],"A05":[211,418],"A06":[288,564],"A07":[291,295],"A08":[320,414],"A09":[348,645],"A10":[391,386],"A11":[386,520],"A12":[411,464],"A13":[437,591],"A14":[441,664],"A15":[460,507],"A16":[464,432],"A17":[495,699],"A18":[513,612],"A19":[512,502],"A20":[531,665],"A21":[531,753],"A22":[576,784],"A23":[558,578],"A24":[573,725],"A25":[601,607],"A26":[596,453],"A27":[617,702],"A28":[632,651],"A29":[628,771],"A30":[665,774],"A31":[668,703],"A32":[695,619],"A33":[796,654],"A34":[622,823],"B01":[886,436],"B02":[947,543],"B03":[973,394],"B04":[1022,486],"B05":[1026,631],"B06":[1065,654],"B07":[1100,534],"B08":[1113,639],"B09":[1155,290],"B10":[1167,407],"B11":[1171,611],"B12":[1191,701],"B13":[1187,205],"B14":[1229,496],"B15":[1244,582],"B16":[1265,336],"B17":[1291,412],"B18":[1310,500],"B19":[1356,446],"B20":[1416,456],"C01":[1475,157],"C02":[1497,241],"C03":[1518,307],"C04":[1534,379],"C05":[1550,454],"C06":[1552,534],"C07":[1570,200],"C08":[1595,276],"C09":[1608,354],"C10":[1619,443],"C11":[1630,517],"C12":[1635,593],"C13":[1655,247],"C14":[1671,332],"C15":[1684,413],"C16":[1697,498],"C17":[1707,572],"C18":[1718,194],"C19":[1734,272],"C20":[1750,356],"C21":[1765,434],"C22":[1778,511],"C23":[1789,203],"C24":[1805,286],"C25":[1820,368],"C26":[1833,446],"C27":[1844,307],"C28":[1857,383],"C29":[1869,461],"C30":[1880,536],"D01":[1906,254],"D02":[1922,336],"D03":[1936,416],"D04":[1950,492],"D05":[1963,568],"D06":[1975,305],"D07":[1989,383],"D08":[2003,459],"D09":[2015,534],"D10":[2028,608],"D11":[2040,352],"D12":[2053,426],"D13":[2080,490],"E01":[2102,328],"E02":[2115,405],"E03":[2129,479],"E04":[2142,553],"E05":[2155,625],"E06":[2169,374],"E07":[2182,448],"E08":[2195,520],"E09":[2209,591],"E10":[2222,661],"E11":[2235,419],"E12":[2249,490],"F01":[2340,460],"F02":[2355,528],"F03":[2370,596],"F04":[2384,664],"F05":[2398,732],"F06":[2412,525],"F07":[2426,593]};
+const SEA_POS = {"S01":[1726,646],"S02":[1379,590],"S03":[539,937],"S04":[2146,861],"S05":[792,342],"S06":[320,763],"S07":[1984,816],"S08":[1588,945],"S09":[459,269],"S10":[948,1093],"S11":[928,747],"S12":[1639,612],"S13":[1146,783],"S14":[238,101],"S15":[1053,847],"S16":[809,812],"S17":[1551,863],"S18":[1327,919],"S19":[718,745],"S20":[2113,626],"S21":[666,392]};
+
+// ── Constants ────────────────────────────────────────────────────────────────
+const GOODS = ['Rice','Spice','Rubber','SiapSaji','Oil'];
+const GOOD_REV = {Rice:20,Spice:25,Rubber:30,SiapSaji:35,Oil:40};
+const GOOD_COLOR = {Rice:'#22c55e',Spice:'#ef4444',Rubber:'#84cc16',SiapSaji:'#f97316',Oil:'#1d4ed8'};
+const PLAYER_COLORS = ['#f59e0b','#8b5cf6','#ec4899','#06b6d4'];
+const SHIP_FEE = 5;
+
+// ── State ────────────────────────────────────────────────────────────────────
+let uid = 0;
+const mkId = () => 'id'+(++uid);
+
+let players = [
+  {id:mkId(),name:'Player 1',color:PLAYER_COLORS[0]},
+  {id:mkId(),name:'Player 2',color:PLAYER_COLORS[1]}
+];
+let prodCompanies = [];   // {id, playerId, good, areaIds:[]}
+let shipCompanies = [];   // {id, playerId, hullLevel, ships:{seaId:count}}
+let cities = [];          // {areaId, demands:{good:n}}
+let tool = {kind:'none'}; // {kind:'none'|'factory'|'ship'|'city'|'erase', companyId?}
+let lastResults = [];
+
+// ── Tool helpers ─────────────────────────────────────────────────────────────
+function setTool(t){ tool = t; renderMap(); renderSetup(); }
+
+function handleMapClick(e){
+  const svg = document.getElementById('map-svg');
+  const pt = svg.createSVGPoint();
+  pt.x = e.clientX; pt.y = e.clientY;
+  const svgPt = pt.matrixTransform(svg.getScreenCTM().inverse());
+  const x = svgPt.x, y = svgPt.y;
+
+  // Find nearest area within threshold
+  let best = null, bestD = 999;
+  for(const [id,[px,py]] of Object.entries(LAND_POS)){
+    const d = Math.hypot(px-x, py-y);
+    if(d < 50 && d < bestD){ bestD=d; best={id,type:'L'}; }
+  }
+  for(const [id,[px,py]] of Object.entries(SEA_POS)){
+    const d = Math.hypot(px-x, py-y);
+    if(d < 60 && d < bestD){ bestD=d; best={id,type:'S'}; }
+  }
+  if(!best) return;
+
+  if(tool.kind==='factory' && best.type==='L'){
+    const co = prodCompanies.find(c=>c.id===tool.companyId);
+    if(!co) return;
+    // Remove from other companies and cities
+    prodCompanies.forEach(c=>{ c.areaIds=c.areaIds.filter(a=>a!==best.id); });
+    cities = cities.filter(c=>c.areaId!==best.id);
+    if(!co.areaIds.includes(best.id)) co.areaIds.push(best.id);
+    else co.areaIds = co.areaIds.filter(a=>a!==best.id); // toggle off
+    renderMap(); renderSetup();
+  } else if(tool.kind==='city' && best.type==='L'){
+    prodCompanies.forEach(c=>{ c.areaIds=c.areaIds.filter(a=>a!==best.id); });
+    if(!cities.find(c=>c.areaId===best.id)) cities.push({areaId:best.id,demands:{}});
+    renderMap(); renderSetup();
+  } else if(tool.kind==='ship' && best.type==='S'){
+    const co = shipCompanies.find(c=>c.id===tool.companyId);
+    if(!co) return;
+    co.ships[best.id] = (co.ships[best.id]||0)+1;
+    renderMap(); renderSetup();
+  } else if(tool.kind==='erase'){
+    prodCompanies.forEach(c=>{ c.areaIds=c.areaIds.filter(a=>a!==best.id); });
+    cities = cities.filter(c=>c.areaId!==best.id);
+    shipCompanies.forEach(c=>{ delete c.ships[best.id]; });
+    renderMap(); renderSetup();
+  }
+}
+
+// ── Map Rendering ────────────────────────────────────────────────────────────
+function getAreaOwner(id){
+  for(const co of prodCompanies){
+    if(co.areaIds.includes(id)) return co;
+  }
+  return null;
+}
+
+function renderMap(){
+  const svg = document.getElementById('map-svg');
+  const areaHighlight = tool.kind!=='none';
+  let html = '';
+
+  // Sea areas
+  for(const [id,[x,y]] of Object.entries(SEA_POS)){
+    const totalShips = shipCompanies.reduce((s,c)=>s+(c.ships[id]||0),0);
+    const fill = totalShips>0 ? '#0ea5e9' : '#93c5fd';
+    const stroke = (tool.kind==='ship'||tool.kind==='erase') ? '#60a5fa' : '#3b82f6';
+    html += `<g class="area" data-id="${id}">
+      <circle cx="${x}" cy="${y}" r="48" fill="${fill}" stroke="${stroke}" stroke-width="2" opacity="0.85"/>
+      <text x="${x}" y="${y-14}" text-anchor="middle" font-size="16" fill="#1e3a5f" font-weight="bold">${id}</text>
+      ${totalShips?`<text x="${x}" y="${y+16}" text-anchor="middle" font-size="18" fill="#0c4a6e" font-weight="bold">⚓${totalShips}</text>`:''}
+    </g>`;
+  }
+
+  // Land areas
+  for(const [id,[x,y]] of Object.entries(LAND_POS)){
+    const owner = getAreaOwner(id);
+    const isCity = cities.find(c=>c.areaId===id);
+    const fill = owner ? players.find(p=>p.id===owner.playerId)?.color||'#6b7280'
+                : isCity ? '#facc15' : '#d1d5db';
+    const stroke = areaHighlight ? '#60a5fa' : '#6b7280';
+    const r = isCity ? 36 : 26;
+    const goodLabel = owner ? owner.good[0] : (isCity ? 'C' : '');
+    html += `<g class="area" data-id="${id}">
+      <circle cx="${x}" cy="${y}" r="${r}" fill="${fill}" stroke="${stroke}" stroke-width="2"/>
+      <text x="${x}" y="${y-10}" text-anchor="middle" font-size="12" fill="#374151">${id}</text>
+      ${goodLabel?`<text x="${x}" y="${y+12}" text-anchor="middle" font-size="13" fill="#111827" font-weight="bold">${goodLabel}</text>`:''}
+    </g>`;
+  }
+
+  svg.innerHTML = html;
+}
+
+// ── Setup Panel ──────────────────────────────────────────────────────────────
+function renderSetup(){
+  const toolBar = tool.kind==='none'
+    ? `<div class="tool-bar">เลือก tool ด้านล่าง แล้วคลิกบนแผนที่</div>`
+    : `<div class="tool-bar on">${toolLabel()} <button class="btn" onclick="setTool({kind:'none'})">✕ ยกเลิก</button></div>`;
+
+  const eraseBtn = `<button class="btn ${tool.kind==='erase'?'active':''}" onclick="toggleErase()">🗑 ลบ</button>`;
+
+  const playersHtml = `<div class="section">
+    <div class="sec-hdr"><span class="sec-title">ผู้เล่น</span>
+    ${players.length<4?`<button class="btn" onclick="addPlayer()">+ เพิ่ม</button>`:''}</div>
+    ${players.map(p=>`<div class="row">
+      <span class="dot" style="background:${p.color}"></span>
+      <input type="text" value="${p.name}" onchange="renamePlayer('${p.id}',this.value)" />
+      ${players.length>1?`<button class="btn danger" onclick="removePlayer('${p.id}')">✕</button>`:''}
+    </div>`).join('')}
+  </div>`;
+
+  const prodHtml = `<div class="section">
+    <div class="sec-title" style="margin-bottom:6px">🏭 บริษัทผลิต</div>
+    ${players.map(p=>{
+      const myCompanies = prodCompanies.filter(c=>c.playerId===p.id);
+      return `<div style="margin-bottom:8px">
+        <div class="row" style="margin-bottom:4px">
+          <span class="dot" style="background:${p.color}"></span>
+          <span style="font-size:12px;font-weight:600">${p.name}</span>
+          ${GOODS.map(g=>`<button class="btn" style="background:${GOOD_COLOR[g]};color:#fff" onclick="addProdCompany('${p.id}','${g}')">+${g[0]}</button>`).join('')}
+        </div>
+        ${myCompanies.map(co=>`<div class="row" style="margin-bottom:3px;padding-left:18px">
+          <span class="good-pill" style="background:${GOOD_COLOR[co.good]}">${co.good}</span>
+          <span style="color:#94a3b8;font-size:11px">${co.areaIds.length} areas</span>
+          <button class="btn ${tool.kind==='factory'&&tool.companyId===co.id?'active':''}"
+            onclick="toggleFactoryTool('${co.id}')">📍${tool.kind==='factory'&&tool.companyId===co.id?'✓':''} วาง</button>
+          <button class="btn danger" onclick="removeProdCompany('${co.id}')">✕</button>
+        </div>`).join('')}
+      </div>`;
+    }).join('')}
+  </div>`;
+
+  const shipHtml = `<div class="section">
+    <div class="sec-title" style="margin-bottom:6px">🚢 บริษัทเรือ</div>
+    ${players.map(p=>{
+      const myShips = shipCompanies.filter(c=>c.playerId===p.id);
+      return `<div style="margin-bottom:8px">
+        <div class="row" style="margin-bottom:4px">
+          <span class="dot" style="background:${p.color}"></span>
+          <span style="font-size:12px;font-weight:600">${p.name}</span>
+          <button class="btn" onclick="addShipCompany('${p.id}')">+ เพิ่มบริษัทเรือ</button>
+        </div>
+        ${myShips.map(co=>{
+          const seaEntries = Object.entries(co.ships).filter(([,n])=>n>0);
+          return `<div style="padding-left:18px;margin-bottom:6px">
+            <div class="row">
+              <span style="font-size:11px;color:#94a3b8">Hull:</span>
+              <select onchange="setHull('${co.id}',+this.value)">
+                ${[0,1,2,3].map(v=>`<option value="${v}" ${co.hullLevel===v?'selected':''}>${v} (${1+v}/ship)</option>`).join('')}
+              </select>
+              <button class="btn ${tool.kind==='ship'&&tool.companyId===co.id?'active':''}"
+                onclick="toggleShipTool('${co.id}')">⚓${tool.kind==='ship'&&tool.companyId===co.id?'✓':''} วาง</button>
+              <button class="btn danger" onclick="removeShipCompany('${co.id}')">✕</button>
+            </div>
+            ${seaEntries.length?`<div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:3px">
+              ${seaEntries.map(([sid,n])=>`<span class="ship-tag">${sid}:${n}⚓ <button class="btn" style="padding:0 4px" onclick="removeShip('${co.id}','${sid}')">−</button></span>`).join('')}
+            </div>`:''}
+          </div>`;
+        }).join('')}
+      </div>`;
+    }).join('')}
+  </div>`;
+
+  const cityHtml = `<div class="section">
+    <div class="sec-hdr"><span class="sec-title">🏙 เมือง</span>
+      <button class="btn ${tool.kind==='city'?'active':''}" onclick="toggleCityTool()">🏙 วางเมือง</button>
+    </div>
+    ${cities.length===0?'<p class="hint">กด "วางเมือง" แล้วคลิก land area</p>':''}
+    ${cities.map(city=>`<div style="background:#0f172a;border-radius:5px;padding:5px;margin-bottom:4px">
+      <div style="font-weight:700;font-size:12px;margin-bottom:3px">${city.areaId}
+        <button class="btn danger" style="margin-left:6px" onclick="removeCity('${city.areaId}')">✕</button>
+      </div>
+      <div class="row">
+        ${GOODS.map(g=>`<label style="display:flex;align-items:center;gap:2px;font-size:11px">
+          <span style="color:${GOOD_COLOR[g]};font-weight:700">${g[0]}</span>
+          <input type="number" min="0" max="10" value="${city.demands[g]||0}"
+            onchange="setCityDemand('${city.areaId}','${g}',+this.value)" />
+        </label>`).join('')}
+      </div>
+    </div>`).join('')}
+  </div>`;
+
+  document.getElementById('pane-setup').innerHTML = toolBar + `<div style="display:flex;gap:6px;margin-bottom:6px">${eraseBtn}</div>` + playersHtml + prodHtml + shipHtml + cityHtml;
+}
+
+function toolLabel(){
+  if(tool.kind==='factory'){
+    const co=prodCompanies.find(c=>c.id===tool.companyId);
+    return `🏭 วาง Factory (${co?.good}) – คลิก land area`;
+  }
+  if(tool.kind==='city') return '🏙 วางเมือง – คลิก land area';
+  if(tool.kind==='ship') return '⚓ วางเรือ – คลิก sea area (คลิกซ้ำ = เพิ่มเรือ)';
+  if(tool.kind==='erase') return '🗑 ลบ – คลิก area ที่ต้องการลบ';
+  return '';
+}
+
+// ── State mutators ───────────────────────────────────────────────────────────
+function addPlayer(){ if(players.length<4){ players.push({id:mkId(),name:`Player ${players.length+1}`,color:PLAYER_COLORS[players.length]}); renderSetup(); } }
+function removePlayer(id){ players=players.filter(p=>p.id!==id); prodCompanies=prodCompanies.filter(c=>c.playerId!==id); shipCompanies=shipCompanies.filter(c=>c.playerId!==id); renderSetup(); renderMap(); }
+function renamePlayer(id,name){ const p=players.find(p=>p.id===id); if(p) p.name=name; }
+function addProdCompany(pid,good){ prodCompanies.push({id:mkId(),playerId:pid,good,areaIds:[]}); renderSetup(); }
+function removeProdCompany(id){ prodCompanies=prodCompanies.filter(c=>c.id!==id); if(tool.kind==='factory'&&tool.companyId===id) setTool({kind:'none'}); else{ renderSetup(); renderMap(); } }
+function addShipCompany(pid){ shipCompanies.push({id:mkId(),playerId:pid,hullLevel:0,ships:{}}); renderSetup(); }
+function removeShipCompany(id){ shipCompanies=shipCompanies.filter(c=>c.id!==id); if(tool.kind==='ship'&&tool.companyId===id) setTool({kind:'none'}); else{ renderSetup(); } }
+function setHull(id,v){ const c=shipCompanies.find(c=>c.id===id); if(c) c.hullLevel=v; }
+function removeShip(cid,sid){ const c=shipCompanies.find(c=>c.id===cid); if(!c) return; if((c.ships[sid]||0)<=1) delete c.ships[sid]; else c.ships[sid]--; renderSetup(); renderMap(); }
+function removeCity(areaId){ cities=cities.filter(c=>c.areaId!==areaId); renderSetup(); renderMap(); }
+function setCityDemand(areaId,good,n){ const c=cities.find(c=>c.areaId===areaId); if(!c) return; if(n<=0) delete c.demands[good]; else c.demands[good]=n; }
+function toggleFactoryTool(id){ setTool(tool.kind==='factory'&&tool.companyId===id?{kind:'none'}:{kind:'factory',companyId:id}); }
+function toggleShipTool(id){ setTool(tool.kind==='ship'&&tool.companyId===id?{kind:'none'}:{kind:'ship',companyId:id}); }
+function toggleCityTool(){ setTool(tool.kind==='city'?{kind:'none'}:{kind:'city'}); }
+function toggleErase(){ setTool(tool.kind==='erase'?{kind:'none'}:{kind:'erase'}); }
+
+function switchTab(t){
+  document.getElementById('tab-setup').classList.toggle('active',t==='setup');
+  document.getElementById('tab-results').classList.toggle('active',t==='results');
+  document.getElementById('pane-setup').style.display=t==='setup'?'':'none';
+  document.getElementById('pane-results').style.display=t==='results'?'':'none';
+}
+
+// ── Solver ───────────────────────────────────────────────────────────────────
+function buildZones(company){
+  const areaSet = new Set(company.areaIds);
+  const unvisited = [...areaSet].sort();
+  const groups = [];
+  while(unvisited.length>0){
+    const seed = unvisited.shift();
+    const queue = [seed], group = [], remaining = new Set(unvisited);
+    remaining.delete(seed);
+    while(queue.length>0){
+      const cur = queue.shift(); group.push(cur);
+      for(const nb of (GRAPH[cur]?.l||[])){
+        if(GRAPH[nb]?.t==='L' && remaining.has(nb)){ remaining.delete(nb); queue.push(nb); }
+      }
+    }
+    unvisited.splice(0,unvisited.length,...[...remaining].sort());
+    groups.push([...group].sort());
+  }
+  return groups.map((areaIds,i)=>{
+    const adjSea = new Set();
+    for(const a of areaIds) for(const s of (GRAPH[a]?.s||[])) if(GRAPH[s]?.t==='S') adjSea.add(s);
+    return {zoneId:`${company.id}:z${i+1}`,areaIds,adjacentSeaAreaIds:[...adjSea].sort(),supply:areaIds.length};
+  });
+}
+
+function buildCityDemands(good){
+  return cities.filter(c=>(c.demands[good]||0)>0).map(c=>{
+    const adjSea = new Set();
+    for(const s of (GRAPH[c.areaId]?.s||[])) if(GRAPH[s]?.t==='S') adjSea.add(s);
+    return {cityId:c.areaId,cityAreaId:c.areaId,adjacentSeaAreaIds:[...adjSea].sort(),remainingDemand:c.demands[good]};
+  }).sort((a,b)=>a.cityId.localeCompare(b.cityId));
+}
+
+function buildShipNetworks(){
+  return shipCompanies.filter(co=>Object.values(co.ships).some(n=>n>0)).map(co=>{
+    const seaIds = Object.keys(co.ships).filter(s=>(co.ships[s]||0)>0).sort();
+    const cap = seaIds.map(s=>({seaAreaId:s,capacity:co.ships[s]*(1+co.hullLevel)}));
+    const seaSet = new Set(seaIds);
+    const laneMap = new Map();
+    for(const s of seaIds){
+      for(const nb of (GRAPH[s]?.s||[])){
+        if(seaSet.has(nb)){ const k=[s,nb].sort().join('|'); if(!laneMap.has(k)) laneMap.set(k,{fromSeaAreaId:[s,nb].sort()[0],toSeaAreaId:[s,nb].sort()[1]}); }
+      }
+    }
+    return {shippingCompanyId:co.id,seaLanes:[...laneMap.values()],seaAreaCapacities:cap};
+  }).sort((a,b)=>a.shippingCompanyId.localeCompare(b.shippingCompanyId));
+}
+
+// Min-Cost Max-Flow (Successive Shortest Paths with Dijkstra+potentials)
+function solveDelivery(problem){
+  const {zoneSupplies,cityDemands,shippingCompanyNetworks,shippingFeePerShipUse,ownedShippingCompanyIds} = problem;
+
+  // Build flow network
+  const nodes = []; // {kind, ...}
+  const adj = [];   // adj[i] = [{to,rev,cap,cost,flow,meta}]
+
+  function addNode(n){ adj.push([]); return nodes.push(n)-1; }
+  function addEdge(u,v,cap,cost,meta){
+    adj[u].push({to:v,rev:adj[v].length,cap,cost,flow:0,meta});
+    adj[v].push({to:u,rev:adj[u].length-1,cap:0,cost:-cost,flow:0});
+  }
+
+  const src = addNode({k:'src'});
+  const snk = addNode({k:'snk'});
+
+  const totalSupply = zoneSupplies.reduce((s,z)=>s+z.supply,0);
+  const totalDemand = cityDemands.reduce((s,c)=>s+c.remainingDemand,0);
+  const inf = Math.max(1,totalSupply,totalDemand);
+
+  // Zone nodes
+  const zoneIdx = new Map();
+  for(const z of [...zoneSupplies].sort((a,b)=>a.zoneId.localeCompare(b.zoneId))){
+    const i = addNode({k:'zone',zoneId:z.zoneId});
+    zoneIdx.set(z.zoneId,i);
+    addEdge(src,i,z.supply,0);
+  }
+
+  // City nodes
+  const cityIdx = new Map();
+  for(const c of [...cityDemands].sort((a,b)=>a.cityId.localeCompare(b.cityId))){
+    const i = addNode({k:'city',cityId:c.cityId});
+    cityIdx.set(c.cityId,i);
+    addEdge(i,snk,c.remainingDemand,0,{kind:'city-to-sink',cityId:c.cityId});
+  }
+
+  const ownedSet = new Set(ownedShippingCompanyIds);
+  let maxTotalShipCost = 0;
+  for(const sn of shippingCompanyNetworks) for(const sa of sn.seaAreaCapacities) maxTotalShipCost+=sa.capacity*shippingFeePerShipUse;
+  const nonOwnedScale = maxTotalShipCost+1;
+
+  for(const sn of [...shippingCompanyNetworks].sort((a,b)=>a.shippingCompanyId.localeCompare(b.shippingCompanyId))){
+    const seaInIdx = new Map(), seaOutIdx = new Map();
+    for(const sa of [...sn.seaAreaCapacities].sort((a,b)=>a.seaAreaId.localeCompare(b.seaAreaId))){
+      const si = addNode({k:'sea-in',cid:sn.shippingCompanyId,sid:sa.seaAreaId});
+      const so = addNode({k:'sea-out',cid:sn.shippingCompanyId,sid:sa.seaAreaId});
+      seaInIdx.set(sa.seaAreaId,si); seaOutIdx.set(sa.seaAreaId,so);
+      const cost = ownedSet.has(sn.shippingCompanyId)
+        ? shippingFeePerShipUse
+        : shippingFeePerShipUse*nonOwnedScale + shippingFeePerShipUse;
+      addEdge(si,so,sa.capacity,cost,{kind:'sea-capacity',cid:sn.shippingCompanyId,sid:sa.seaAreaId});
+    }
+    const seaSet = new Set(seaInIdx.keys());
+    // Zone → sea-in
+    for(const z of [...zoneSupplies].sort((a,b)=>a.zoneId.localeCompare(b.zoneId))){
+      const zi = zoneIdx.get(z.zoneId);
+      for(const sid of [...z.adjacentSeaAreaIds].sort()){
+        if(seaSet.has(sid)) addEdge(zi,seaInIdx.get(sid),z.supply,0,{kind:'zone-to-sea',zoneId:z.zoneId,cid:sn.shippingCompanyId,sid});
+      }
+    }
+    // Sea lanes (bidirectional)
+    for(const lane of [...sn.seaLanes].sort((a,b)=>a.fromSeaAreaId.localeCompare(b.fromSeaAreaId)||a.toSeaAreaId.localeCompare(b.toSeaAreaId))){
+      if(seaSet.has(lane.fromSeaAreaId)&&seaSet.has(lane.toSeaAreaId)){
+        addEdge(seaOutIdx.get(lane.fromSeaAreaId),seaInIdx.get(lane.toSeaAreaId),inf,0);
+        addEdge(seaOutIdx.get(lane.toSeaAreaId),seaInIdx.get(lane.fromSeaAreaId),inf,0);
+      }
+    }
+    // Sea-out → city
+    for(const c of [...cityDemands].sort((a,b)=>a.cityId.localeCompare(b.cityId))){
+      const ci = cityIdx.get(c.cityId);
+      for(const sid of [...c.adjacentSeaAreaIds].sort()){
+        if(seaSet.has(sid)) addEdge(seaOutIdx.get(sid),ci,c.remainingDemand,0,{kind:'sea-to-city',cid:sn.shippingCompanyId,cityId:c.cityId,sid});
+      }
+    }
+  }
+
+  // Dijkstra with potentials (successive shortest paths)
+  const N = nodes.length;
+  const pot = new Array(N).fill(0);
+  let totalFlow = 0;
+  const augmentations = [];
+
+  while(true){
+    const dist = new Array(N).fill(Infinity);
+    const prev = new Array(N).fill(-1);
+    const prevE = new Array(N).fill(-1);
+    const vis = new Array(N).fill(false);
+    dist[src] = 0;
+
+    for(let iter=0;iter<N;iter++){
+      let u=-1;
+      for(let i=0;i<N;i++) if(!vis[i]&&dist[i]<(u<0?Infinity:dist[u])) u=i;
+      if(u<0||dist[u]===Infinity) break;
+      vis[u]=true;
+      for(let ei=0;ei<adj[u].length;ei++){
+        const e=adj[u][ei];
+        if(e.cap-e.flow<=0) continue;
+        const rc=e.cost+pot[u]-pot[e.to];
+        if(dist[u]+rc<dist[e.to]){ dist[e.to]=dist[u]+rc; prev[e.to]=u; prevE[e.to]=ei; }
+      }
+    }
+    if(prev[snk]<0) break;
+    for(let i=0;i<N;i++) if(dist[i]<Infinity) pot[i]+=dist[i];
+
+    let aug=Infinity, v=snk;
+    const path=[];
+    while(v!==src){ const u=prev[v],ei=prevE[v]; path.push({u,ei}); aug=Math.min(aug,adj[u][ei].cap-adj[u][ei].flow); v=u; }
+    for(const {u,ei} of path){ adj[u][ei].flow+=aug; adj[adj[u][ei].to][adj[u][ei].rev].flow-=aug; }
+    totalFlow+=aug;
+    augmentations.push({amount:aug,path:[...path].reverse()});
+  }
+
+  // Decompose flow into paths
+  const remFlow = adj.map(edges=>edges.map(e=>e.cap>0&&e.flow>0?e.flow:0));
+  const deliveryMap = new Map();
+  const shipUseMap = new Map();
+
+  function dfs(u,pathEdges){
+    if(u===snk) return true;
+    for(let ei=0;ei<adj[u].length;ei++){
+      if(remFlow[u][ei]<=0) continue;
+      const e=adj[u][ei];
+      const visited = new Set(pathEdges.map(p=>p.u));
+      if(visited.has(e.to)) continue;
+      pathEdges.push({u,ei,e});
+      if(dfs(e.to,pathEdges)) return true;
+      pathEdges.pop();
+    }
+    return false;
+  }
+
+  while(true){
+    const path=[];
+    if(!dfs(src,path)) break;
+    const amt=Math.min(...path.map(p=>remFlow[p.u][p.ei]));
+    if(!isFinite(amt)||amt<=0) break;
+    for(const {u,ei} of path) remFlow[u][ei]-=amt;
+
+    let zoneId=null,cityId=null,shipCid=null;
+    const seaPath=[];
+    for(const {e} of path){
+      if(!e.meta) continue;
+      if(e.meta.kind==='zone-to-sea'){ zoneId=e.meta.zoneId; shipCid=e.meta.cid; }
+      else if(e.meta.kind==='sea-capacity'){ seaPath.push(e.meta.sid); const k=`${e.meta.cid}|${e.meta.sid}`; shipUseMap.set(k,(shipUseMap.get(k)||0)+amt); }
+      else if(e.meta.kind==='sea-to-city'){ cityId=e.meta.cityId; shipCid=e.meta.cid; }
+    }
+    if(zoneId&&cityId&&shipCid){
+      const key=`${zoneId}|${cityId}|${shipCid}|${seaPath.join('>')}`;
+      const ex=deliveryMap.get(key);
+      if(ex) ex.quantity+=amt; else deliveryMap.set(key,{zoneId,cityId,shippingCompanyId:shipCid,quantity:amt,seaPathAreaIds:[...seaPath]});
+    }
+  }
+
+  const deliveries=[...deliveryMap.values()].sort((a,b)=>`${a.zoneId}|${a.cityId}`.localeCompare(`${b.zoneId}|${b.cityId}`));
+  const shipUses=[...shipUseMap.entries()].map(([k,uses])=>{const[cid,sid]=k.split('|');return{shippingCompanyId:cid,seaAreaId:sid,uses};}).sort((a,b)=>a.shippingCompanyId.localeCompare(b.shippingCompanyId)||a.seaAreaId.localeCompare(b.seaAreaId));
+
+  const payMap=new Map();
+  for(const su of shipUses){ payMap.set(su.shippingCompanyId,(payMap.get(su.shippingCompanyId)||0)+su.uses*shippingFeePerShipUse); }
+  const shippingPayments=[...payMap.entries()].map(([cid,amount])=>({shippingCompanyId:cid,amount}));
+
+  const revenue = totalFlow*(GOOD_REV[problem.good]||0);
+  const shippingCost = shippingPayments.reduce((s,p)=>s+p.amount,0);
+
+  return {deliveries,shipUses,shippingPayments,totalDelivered:totalFlow,revenue,shippingCost,netIncome:revenue-shippingCost};
+}
+
+function runCalculate(){
+  const errBar = document.getElementById('error-bar');
+  errBar.style.display='none';
+  try{
+    const shipNetworks = buildShipNetworks();
+    lastResults = prodCompanies.map(co=>{
+      const player = players.find(p=>p.id===co.playerId)||{name:'?',color:'#888'};
+      const ownedShipIds = shipCompanies.filter(s=>s.playerId===co.playerId).map(s=>s.id);
+      const plan = solveDelivery({
+        operatingCompanyId:co.id,
+        good:co.good,
+        shippingFeePerShipUse:SHIP_FEE,
+        ownedShippingCompanyIds:ownedShipIds,
+        zoneSupplies:buildZones(co),
+        cityDemands:buildCityDemands(co.good),
+        shippingCompanyNetworks:shipNetworks
+      });
+      return {company:co,player,plan};
+    });
+    renderResults();
+    switchTab('results');
+    const badge = document.getElementById('results-badge');
+    badge.style.display=''; badge.textContent=lastResults.length;
+  }catch(e){
+    errBar.style.display='block'; errBar.textContent='Error: '+(e.message||e);
+  }
+}
+
+function renderResults(){
+  const el = document.getElementById('pane-results');
+  if(!lastResults.length){ el.innerHTML='<p class="hint">กด ⚡ Calculate เพื่อคำนวณ</p>'; return; }
+
+  let html='';
+  for(const {company:co,player,plan} of lastResults){
+    const gc=GOOD_COLOR[co.good];
+    html+=`<div class="r-company">
+      <div class="r-hdr">
+        <span class="good-pill" style="background:${gc}">${co.good}</span>
+        <span style="color:${player.color};font-weight:700">${player.name}</span>
+        <div class="r-nums">
+          <span class="num-g">+$${plan.revenue}</span>
+          <span class="num-r">−$${plan.shippingCost}</span>
+          <span class="num-b" style="color:${plan.netIncome>=0?'#4ade80':'#f87171'}">= $${plan.netIncome}</span>
+          <span style="color:#94a3b8;font-size:11px">${plan.totalDelivered} goods</span>
+        </div>
+      </div>`;
+    if(plan.deliveries.length===0){
+      html+=`<p style="color:#64748b;font-style:italic;font-size:11px">ไม่มีเส้นทางส่งสินค้า</p>`;
+    } else {
+      html+=`<table><thead><tr><th>Zone</th><th>→ เมือง</th><th>จำนวน</th><th>เส้นทางทะเล</th></tr></thead><tbody>`;
+      for(const d of plan.deliveries){
+        const zn=d.zoneId.split(':z')[1]||d.zoneId;
+        html+=`<tr><td>Zone ${zn}</td><td>${d.cityId}</td><td style="color:#f0abfc;font-weight:700">${d.quantity}</td><td class="sea-path">${d.seaPathAreaIds.join('→')}</td></tr>`;
+      }
+      html+=`</tbody></table>`;
+    }
+    if(plan.shippingPayments.length){
+      html+=`<div style="margin-top:5px;font-size:11px;color:#94a3b8">ค่าเรือ: ${plan.shippingPayments.map(p=>`$${p.amount}`).join(', ')}</div>`;
+    }
+    html+=`</div>`;
+  }
+
+  // Per-player totals
+  const playerIds=[...new Set(lastResults.map(r=>r.player.id))];
+  html+=`<div class="totals-section"><div style="font-size:11px;color:#94a3b8;text-transform:uppercase;margin-bottom:8px">สรุปต่อผู้เล่น</div>`;
+  for(const pid of playerIds){
+    const rows=lastResults.filter(r=>r.player.id===pid);
+    const pl=rows[0].player;
+    const rev=rows.reduce((s,r)=>s+r.plan.revenue,0);
+    const ship=rows.reduce((s,r)=>s+r.plan.shippingCost,0);
+    const net=rev-ship;
+    html+=`<div class="player-total" style="border-left-color:${pl.color}">
+      <span style="color:${pl.color};font-weight:700">${pl.name}</span>
+      <span class="num-g">+$${rev}</span><span class="num-r">−$${ship}</span>
+      <span class="num-b" style="color:${net>=0?'#4ade80':'#f87171'}">= $${net}</span>
+    </div>`;
+  }
+  html+=`</div>`;
+  el.innerHTML=html;
+}
+
+// ── Init ─────────────────────────────────────────────────────────────────────
+renderMap();
+renderSetup();
+</script>
+</body>
+</html>

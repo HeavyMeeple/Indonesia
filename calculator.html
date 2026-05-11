@@ -65,12 +65,14 @@ td{padding:3px 5px;border-bottom:1px solid #1e293b;color:#e2e8f0}
   #mobile-nav{display:flex;position:fixed;bottom:0;left:0;right:0;height:52px;background:#1e293b;border-top:1px solid #334155;z-index:200}
   .layout{flex-direction:column}
   /* Map pane: hidden by default, shown when mv-map */
-  #map-pane{display:none;flex:1;overflow:auto;-webkit-overflow-scrolling:touch}
-  #map-svg{width:1800px;height:871px;cursor:crosshair;display:block;flex-shrink:0}
+  #map-pane{display:none;flex:1;overflow:hidden;position:relative}
+  #map-zoom{transform-origin:0 0;will-change:transform;display:inline-block}
+  #map-svg{width:1800px;height:871px;cursor:crosshair;display:block}
   /* Side panel: hidden by default, shown when mv-setup or mv-results */
   .side{display:none;width:100%;border-left:none;flex:1}
   .tabs{display:none}
   body.mv-map  #map-pane{display:block}
+  #map-zoom-reset{display:block!important}
   body.mv-setup .side,body.mv-results .side{display:flex}
   body.mv-setup   #pane-setup{display:block!important}
   body.mv-setup   #pane-results{display:none!important}
@@ -93,7 +95,10 @@ td{padding:3px 5px;border-bottom:1px solid #1e293b;color:#e2e8f0}
 <div class="layout">
   <div id="map-pane">
     <div id="map-tool-float"></div>
-    <svg id="map-svg" viewBox="0 0 2646 1280" onclick="handleMapClick(event)"></svg>
+    <button id="map-zoom-reset" onclick="resetMapZoom()" style="display:none;position:absolute;bottom:10px;right:10px;z-index:20;background:#1e293b;color:#94a3b8;border:1px solid #334155;border-radius:8px;padding:6px 10px;font-size:12px;cursor:pointer">⊡ Reset</button>
+    <div id="map-zoom">
+      <svg id="map-svg" viewBox="0 0 2646 1280" onclick="handleMapClick(event)"></svg>
+    </div>
   </div>
   <div class="side">
     <div class="tabs">
@@ -148,6 +153,60 @@ const isMobile = ()=>window.innerWidth<=768;
 function setMobileView(v){
   document.body.className = 'mv-'+v;
   document.querySelectorAll('.m-tab').forEach(el=>el.classList.toggle('active',el.dataset.v===v));
+  if(v==='map') applyMapTransform();
+}
+
+// ── Pinch-to-zoom for mobile map ─────────────────────────────────────────────
+let mapS=1, mapTx=0, mapTy=0, mapTouchMoved=false;
+
+function applyMapTransform(){
+  const z = document.getElementById('map-zoom');
+  if(z) z.style.transform = `translate(${mapTx}px,${mapTy}px) scale(${mapS})`;
+}
+
+function resetMapZoom(){
+  if(!isMobile()) return;
+  const pane = document.getElementById('map-pane');
+  mapS = Math.min(1, pane.clientWidth / 1800);
+  mapTx = 0; mapTy = 0;
+  applyMapTransform();
+}
+
+function initMapTouch(){
+  const pane = document.getElementById('map-pane');
+  if(!pane) return;
+  let st=null; // start touches snapshot
+  let ss, stx, sty; // start s/tx/ty
+
+  function dist(a,b){ return Math.hypot(a.clientX-b.clientX, a.clientY-b.clientY); }
+
+  pane.addEventListener('touchstart', e=>{
+    st = Array.from(e.touches);
+    ss=mapS; stx=mapTx; sty=mapTy;
+    mapTouchMoved = false;
+    if(st.length>=2) e.preventDefault();
+  },{passive:false});
+
+  pane.addEventListener('touchmove', e=>{
+    e.preventDefault();
+    const cur = Array.from(e.touches);
+    if(cur.length===1 && st.length===1){
+      const dx = cur[0].clientX - st[0].clientX;
+      const dy = cur[0].clientY - st[0].clientY;
+      if(Math.abs(dx)>5 || Math.abs(dy)>5) mapTouchMoved = true;
+      mapTx = stx + dx; mapTy = sty + dy;
+    } else if(cur.length>=2 && st.length>=2){
+      mapTouchMoved = true;
+      const scale = dist(cur[0],cur[1]) / dist(st[0],st[1]);
+      const mx = (st[0].clientX+st[1].clientX)/2;
+      const my = (st[0].clientY+st[1].clientY)/2;
+      const newS = Math.max(0.2, Math.min(6, ss*scale));
+      mapTx = mx - (mx - stx) * (newS/ss);
+      mapTy = my - (my - sty) * (newS/ss);
+      mapS = newS;
+    }
+    applyMapTransform();
+  },{passive:false});
 }
 
 // ── Tool helpers ─────────────────────────────────────────────────────────────
@@ -166,6 +225,7 @@ function updateMapToolFloat(){
 }
 
 function handleMapClick(e){
+  if(mapTouchMoved){ mapTouchMoved=false; return; }
   const svg = document.getElementById('map-svg');
   const pt = svg.createSVGPoint();
   pt.x = e.clientX; pt.y = e.clientY;
@@ -821,7 +881,11 @@ for(const [seaId, node] of Object.entries(GRAPH)){
 }
 renderMap();
 renderSetup();
-if(isMobile()) setMobileView('map');
+if(isMobile()){
+  initMapTouch();
+  resetMapZoom();
+  setMobileView('map');
+}
 </script>
 </body>
 </html>

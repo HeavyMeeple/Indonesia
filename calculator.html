@@ -663,6 +663,10 @@ function renderResults(){
   }
 
   // Per-player totals
+  // Build shipping company → player lookup
+  const shipCoOwner = {};
+  for(const sc of shipCompanies) shipCoOwner[sc.id] = players.find(p=>p.id===sc.playerId);
+
   const playerIds=[...new Set(lastResults.map(r=>r.player.id))];
   html+=`<div class="totals-section"><div style="font-size:11px;color:#94a3b8;text-transform:uppercase;margin-bottom:8px">สรุปต่อผู้เล่น</div>`;
   for(const pid of playerIds){
@@ -671,10 +675,32 @@ function renderResults(){
     const rev=rows.reduce((s,r)=>s+r.plan.revenue,0);
     const ship=rows.reduce((s,r)=>s+r.plan.shippingCost,0);
     const net=rev-ship;
+
+    // Aggregate payments to each OTHER player's shipping companies
+    const payToPlayer = new Map(); // recipientPlayerId → {player, amount}
+    for(const {company:co,plan} of rows){
+      const ownedShipIds = new Set(shipCompanies.filter(s=>s.playerId===pid).map(s=>s.id));
+      for(const p of plan.shippingPayments){
+        if(ownedShipIds.has(p.shippingCompanyId)) continue;
+        const recipient = shipCoOwner[p.shippingCompanyId];
+        if(!recipient) continue;
+        payToPlayer.set(recipient.id, {
+          player: recipient,
+          amount: (payToPlayer.get(recipient.id)?.amount||0) + p.amount
+        });
+      }
+    }
+    const payBreakdown = [...payToPlayer.values()].sort((a,b)=>a.player.name.localeCompare(b.player.name));
+
     html+=`<div class="player-total" style="border-left-color:${pl.color}">
-      <span style="color:${pl.color};font-weight:700">${pl.name}</span>
-      <span class="num-g">+$${rev}</span><span class="num-r">−$${ship}</span>
-      <span class="num-b" style="color:${net>=0?'#4ade80':'#f87171'}">= $${net}</span>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;width:100%">
+        <span style="color:${pl.color};font-weight:700">${pl.name}</span>
+        <span class="num-g">+$${rev}</span><span class="num-r">−$${ship}</span>
+        <span class="num-b" style="color:${net>=0?'#4ade80':'#f87171'}">= $${net}</span>
+      </div>
+      ${payBreakdown.length?`<div style="font-size:10px;color:#94a3b8;margin-top:3px;padding-left:2px">
+        จ่ายค่าเรือ: ${payBreakdown.map(p=>`<span style="color:${p.player.color};font-weight:600">${p.player.name}</span> $${p.amount}`).join(' · ')}
+      </div>`:''}
     </div>`;
   }
   html+=`</div>`;

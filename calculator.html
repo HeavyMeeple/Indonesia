@@ -227,10 +227,9 @@ function updateMapToolFloat(){
 function handleMapClick(e){
   if(mapTouchMoved){ mapTouchMoved=false; return; }
   const svg = document.getElementById('map-svg');
-  const pt = svg.createSVGPoint();
-  pt.x = e.clientX; pt.y = e.clientY;
-  const svgPt = pt.matrixTransform(svg.getScreenCTM().inverse());
-  const x = svgPt.x, y = svgPt.y;
+  const rect = svg.getBoundingClientRect();
+  const x = (e.clientX - rect.left) * (2646 / rect.width);
+  const y = (e.clientY - rect.top)  * (1280 / rect.height);
 
   // Find nearest area within threshold
   let best = null, bestD = 999;

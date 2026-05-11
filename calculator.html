@@ -85,7 +85,8 @@ const SEA_POS = {"S01":[1726,646],"S02":[1379,590],"S03":[539,937],"S04":[2146,8
 // ── Constants ────────────────────────────────────────────────────────────────
 const GOODS = ['Rice','Spice','Rubber','SiapSaji','Oil'];
 const GOOD_REV = {Rice:20,Spice:25,Rubber:30,SiapSaji:35,Oil:40};
-const GOOD_COLOR = {Rice:'#22c55e',Spice:'#ef4444',Rubber:'#84cc16',SiapSaji:'#f97316',Oil:'#1d4ed8'};
+const GOOD_COLOR  = {Rice:'#fef08a',Spice:'#4ade80',Rubber:'#4b5563',SiapSaji:'#f1f5f9',Oil:'#581c87'};
+const GOOD_TEXT   = {Rice:'#713f12',Spice:'#14532d',Rubber:'#f1f5f9',SiapSaji:'#1e293b',Oil:'#f1f5f9'};
 const PLAYER_COLORS = ['#43a047','#42a5f5','#fdd835','#ba55d3','#f4511e'];
 const ALL_COLORS = ['#43a047','#42a5f5','#fdd835','#ba55d3','#f4511e'];
 const GOOD_ABBR = {Rice:'Ri',Spice:'Sp',Rubber:'Ru',SiapSaji:'Si',Oil:'Oi'};
@@ -241,7 +242,7 @@ function renderSetup(){
       return `<div class="row" style="margin-bottom:4px">
         <span class="dot" style="background:${p.color}"></span>
         <span style="font-size:12px;font-weight:600">${p.name}</span>
-        ${GOODS.map(g=>`<button class="btn" style="background:${GOOD_COLOR[g]};color:#fff" onclick="addProdCompany('${p.id}','${g}')">+${GOOD_ABBR[g]}</button>`).join('')}
+        ${GOODS.map(g=>`<button class="btn" style="background:${GOOD_COLOR[g]};color:${GOOD_TEXT[g]}" onclick="addProdCompany('${p.id}','${g}')">+${GOOD_ABBR[g]}</button>`).join('')}
       </div>`;
     }).join('')}
     <div style="margin-top:6px">
@@ -250,7 +251,7 @@ function renderSetup(){
       return `<div class="row" style="margin-bottom:4px;background:#0f172a;border-radius:5px;padding:4px 6px">
         <span style="color:#64748b;font-size:11px;font-weight:700;min-width:16px">${idx+1}.</span>
         <span class="dot" style="background:${p.color}"></span>
-        <span class="good-pill" style="background:${GOOD_COLOR[co.good]}">${co.good}</span>
+        <span class="good-pill" style="background:${GOOD_COLOR[co.good]};color:${GOOD_TEXT[co.good]}">${co.good}</span>
         <span style="color:#94a3b8;font-size:11px;flex:1">${p.name} · ${co.areaIds.length} areas</span>
         <button class="btn" style="padding:2px 7px" onclick="moveProdCompany('${co.id}',-1)" ${idx===0?'disabled':''}>▲</button>
         <button class="btn" style="padding:2px 7px" onclick="moveProdCompany('${co.id}',1)" ${idx===prodCompanies.length-1?'disabled':''}>▼</button>
@@ -637,7 +638,7 @@ function renderResults(){
     html+=`<div class="r-company">
       <div class="r-hdr">
         <span style="color:#64748b;font-size:11px;font-weight:700;min-width:20px">#${operateOrder}</span>
-        <span class="good-pill" style="background:${gc}">${co.good}</span>
+        <span class="good-pill" style="background:${gc};color:${GOOD_TEXT[co.good]}">${co.good}</span>
         <span style="color:${player.color};font-weight:700">${player.name}</span>
         <div class="r-nums">
           <span class="num-g">+$${plan.revenue}</span>

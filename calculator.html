@@ -184,15 +184,18 @@ function renderMap(){
       ${hasShips?`<text x="${x}" y="${y+18}" text-anchor="middle" font-size="22" fill="#fff" font-weight="bold" style="text-shadow:1px 1px 2px #000">⚓${totalShips}</text>`:''}</g>`;
   }
 
+  const CITY_FILL   = {1:'rgba(250,204,21,0.85)', 2:'rgba(74,222,128,0.85)', 3:'rgba(248,113,113,0.85)'};
+  const CITY_STROKE = {1:'#ca8a04', 2:'#15803d', 3:'#b91c1c'};
+
   // Land areas
   for(const [id,[x,y]] of Object.entries(LAND_POS)){
     const owner = getAreaOwner(id);
     const isCity = cities.find(c=>c.areaId===id);
     const fill = owner
       ? hexToRgba(players.find(p=>p.id===owner.playerId)?.color||'#6b7280', 0.72)
-      : isCity ? 'rgba(250,204,21,0.8)' : 'rgba(0,0,0,0)';
+      : isCity ? CITY_FILL[isCity.level] : 'rgba(0,0,0,0)';
     const stroke = owner ? (players.find(p=>p.id===owner.playerId)?.color||'#6b7280')
-                  : isCity ? '#ca8a04'
+                  : isCity ? CITY_STROKE[isCity.level]
                   : areaHighlight ? 'rgba(0,0,0,0.75)' : 'rgba(0,0,0,0)';
     const sw = (owner||isCity) ? 2 : (areaHighlight ? 2 : 0);
     const r = isCity ? 32 : 24;

@@ -190,8 +190,8 @@ function renderMap(){
       : isCity ? 'rgba(250,204,21,0.8)' : 'rgba(0,0,0,0)';
     const stroke = owner ? (players.find(p=>p.id===owner.playerId)?.color||'#6b7280')
                   : isCity ? '#ca8a04'
-                  : areaHighlight ? 'rgba(96,165,250,0.6)' : 'rgba(0,0,0,0)';
-    const sw = (owner||isCity) ? 2 : (areaHighlight ? 1.5 : 0);
+                  : areaHighlight ? 'rgba(0,0,0,0.75)' : 'rgba(0,0,0,0)';
+    const sw = (owner||isCity) ? 2 : (areaHighlight ? 2 : 0);
     const r = isCity ? 32 : 24;
     const goodLabel = owner ? owner.good[0] : (isCity ? 'C' : '');
     html += `<g class="area" data-id="${id}">
@@ -443,8 +443,10 @@ function solveDelivery(problem){
       const si = addNode({k:'sea-in',cid:sn.shippingCompanyId,sid:sa.seaAreaId});
       const so = addNode({k:'sea-out',cid:sn.shippingCompanyId,sid:sa.seaAreaId});
       seaInIdx.set(sa.seaAreaId,si); seaOutIdx.set(sa.seaAreaId,so);
+      // Own ships cost 0 (paying yourself), non-owned ships cost full fee
+      // nonOwnedScale ensures optimizer always prefers own ships first
       const cost = ownedSet.has(sn.shippingCompanyId)
-        ? shippingFeePerShipUse
+        ? 0
         : shippingFeePerShipUse*nonOwnedScale + shippingFeePerShipUse;
       addEdge(si,so,sa.capacity,cost,{kind:'sea-capacity',cid:sn.shippingCompanyId,sid:sa.seaAreaId});
     }
@@ -553,11 +555,17 @@ function solveDelivery(problem){
   const shipUses=[...shipUseMap.entries()].map(([k,uses])=>{const[cid,sid]=k.split('|');return{shippingCompanyId:cid,seaAreaId:sid,uses};}).sort((a,b)=>a.shippingCompanyId.localeCompare(b.shippingCompanyId)||a.seaAreaId.localeCompare(b.seaAreaId));
 
   const payMap=new Map();
-  for(const su of shipUses){ payMap.set(su.shippingCompanyId,(payMap.get(su.shippingCompanyId)||0)+su.uses*shippingFeePerShipUse); }
+  for(const su of shipUses){
+    const amount = su.uses * shippingFeePerShipUse;
+    payMap.set(su.shippingCompanyId,(payMap.get(su.shippingCompanyId)||0)+amount);
+  }
   const shippingPayments=[...payMap.entries()].map(([cid,amount])=>({shippingCompanyId:cid,amount}));
 
   const revenue = totalFlow*(GOOD_REV[problem.good]||0);
-  const shippingCost = shippingPayments.reduce((s,p)=>s+p.amount,0);
+  // Only count fees paid to OTHER players' ships (own ships = paying yourself = net 0)
+  const shippingCost = shippingPayments
+    .filter(p=>!ownedSet.has(p.shippingCompanyId))
+    .reduce((s,p)=>s+p.amount,0);
 
   return {deliveries,shipUses,shippingPayments,totalDelivered:totalFlow,revenue,shippingCost,netIncome:revenue-shippingCost};
 }

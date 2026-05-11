@@ -278,7 +278,7 @@ function renderSetup(){
             <div class="row">
               <span style="font-size:11px;color:#94a3b8">Hull:</span>
               <select onchange="setHull('${co.id}',+this.value)">
-                ${[0,1,2,3,4,5].map(v=>`<option value="${v}" ${co.hullLevel===v?'selected':''}>${v} (${1+v}/ship)</option>`).join('')}
+                ${[1,2,3,4,5].map(v=>`<option value="${v}" ${co.hullLevel===v?'selected':''}>${v}</option>`).join('')}
               </select>
               <button class="btn ${tool.kind==='ship'&&tool.companyId===co.id?'active':''}"
                 onclick="toggleShipTool('${co.id}')">⚓${tool.kind==='ship'&&tool.companyId===co.id?'✓':''} วาง</button>
@@ -329,7 +329,7 @@ function renamePlayer(id,name){ const p=players.find(p=>p.id===id); if(p) p.name
 function setPlayerColor(id,color){ const p=players.find(p=>p.id===id); if(p){ p.color=color; renderSetup(); renderMap(); } }
 function addProdCompany(pid,good){ prodCompanies.push({id:mkId(),playerId:pid,good,areaIds:[]}); renderSetup(); }
 function removeProdCompany(id){ prodCompanies=prodCompanies.filter(c=>c.id!==id); if(tool.kind==='factory'&&tool.companyId===id) setTool({kind:'none'}); else{ renderSetup(); renderMap(); } }
-function addShipCompany(pid){ shipCompanies.push({id:mkId(),playerId:pid,hullLevel:0,ships:{}}); renderSetup(); }
+function addShipCompany(pid){ shipCompanies.push({id:mkId(),playerId:pid,hullLevel:1,ships:{}}); renderSetup(); }
 function removeShipCompany(id){ shipCompanies=shipCompanies.filter(c=>c.id!==id); if(tool.kind==='ship'&&tool.companyId===id) setTool({kind:'none'}); else{ renderSetup(); } }
 function setHull(id,v){ const c=shipCompanies.find(c=>c.id===id); if(c) c.hullLevel=v; }
 function removeShip(cid,sid){ const c=shipCompanies.find(c=>c.id===cid); if(!c) return; if((c.ships[sid]||0)<=1) delete c.ships[sid]; else c.ships[sid]--; renderSetup(); renderMap(); }
@@ -391,7 +391,7 @@ function buildCityDemands(remaining, good){
 function buildShipNetworks(){
   return shipCompanies.filter(co=>Object.values(co.ships).some(n=>n>0)).map(co=>{
     const seaIds = Object.keys(co.ships).filter(s=>(co.ships[s]||0)>0).sort();
-    const cap = seaIds.map(s=>({seaAreaId:s,capacity:co.ships[s]*(1+co.hullLevel)}));
+    const cap = seaIds.map(s=>({seaAreaId:s,capacity:co.ships[s]*co.hullLevel}));
     const seaSet = new Set(seaIds);
     const laneMap = new Map();
     for(const s of seaIds){

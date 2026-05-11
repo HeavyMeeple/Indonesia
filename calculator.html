@@ -88,6 +88,7 @@ const GOOD_REV = {Rice:20,Spice:25,Rubber:30,SiapSaji:35,Oil:40};
 const GOOD_COLOR = {Rice:'#22c55e',Spice:'#ef4444',Rubber:'#84cc16',SiapSaji:'#f97316',Oil:'#1d4ed8'};
 const PLAYER_COLORS = ['#43a047','#42a5f5','#fdd835','#ba55d3','#f4511e'];
 const ALL_COLORS = ['#43a047','#42a5f5','#fdd835','#ba55d3','#f4511e'];
+const GOOD_ABBR = {Rice:'Ri',Spice:'Sp',Rubber:'Ru',SiapSaji:'Si',Oil:'Oi'};
 const SHIP_FEE = 5;
 
 // ── State ────────────────────────────────────────────────────────────────────
@@ -194,7 +195,7 @@ function renderMap(){
                   : areaHighlight ? 'rgba(0,0,0,0.75)' : 'rgba(0,0,0,0)';
     const sw = (owner||isCity) ? 2 : (areaHighlight ? 2 : 0);
     const r = isCity ? 32 : 24;
-    const goodLabel = owner ? owner.good[0] : (isCity ? 'C' : '');
+    const goodLabel = owner ? GOOD_ABBR[owner.good] : (isCity ? 'C' : '');
     html += `<g class="area" data-id="${id}">
       ${(fill!=='rgba(0,0,0,0)')||sw>0 ? `<circle cx="${x}" cy="${y}" r="${r}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}"/>` : `<circle cx="${x}" cy="${y}" r="22" fill="rgba(0,0,0,0)" stroke="rgba(0,0,0,0)"/>`}
       ${owner||isCity ? `<text x="${x}" y="${y-8}" text-anchor="middle" font-size="14" fill="#fff" font-weight="bold" style="text-shadow:1px 1px 2px #000">${id}</text>` : ''}
@@ -240,7 +241,7 @@ function renderSetup(){
       return `<div class="row" style="margin-bottom:4px">
         <span class="dot" style="background:${p.color}"></span>
         <span style="font-size:12px;font-weight:600">${p.name}</span>
-        ${GOODS.map(g=>`<button class="btn" style="background:${GOOD_COLOR[g]};color:#fff" onclick="addProdCompany('${p.id}','${g}')">+${g[0]}</button>`).join('')}
+        ${GOODS.map(g=>`<button class="btn" style="background:${GOOD_COLOR[g]};color:#fff" onclick="addProdCompany('${p.id}','${g}')">+${GOOD_ABBR[g]}</button>`).join('')}
       </div>`;
     }).join('')}
     <div style="margin-top:6px">

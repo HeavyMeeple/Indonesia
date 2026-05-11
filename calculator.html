@@ -625,6 +625,9 @@ function runCalculate(){
 
 function renderResults(){
   const el = document.getElementById('pane-results');
+  // Build shipping company → player lookup (needed throughout)
+  const shipCoOwner = {};
+  for(const sc of shipCompanies) shipCoOwner[sc.id] = players.find(p=>p.id===sc.playerId);
   if(!lastResults.length){ el.innerHTML='<p class="hint">กด ⚡ Calculate เพื่อคำนวณ</p>'; return; }
 
   let html='';
@@ -659,15 +662,22 @@ function renderResults(){
       html+=`</tbody></table>`;
     }
     if(plan.shippingPayments.length){
-      html+=`<div style="margin-top:5px;font-size:11px;color:#94a3b8">ค่าเรือ: ${plan.shippingPayments.map(p=>`$${p.amount}`).join(', ')}</div>`;
+      const ownedShipIds = new Set(shipCompanies.filter(s=>s.playerId===player.id).map(s=>s.id));
+      const payLines = plan.shippingPayments
+        .filter(p=>!ownedShipIds.has(p.shippingCompanyId))
+        .map(p=>{
+          const recipient = shipCoOwner[p.shippingCompanyId];
+          const name = recipient ? `<span style="color:${recipient.color};font-weight:600">${recipient.name}</span>` : p.shippingCompanyId;
+          return `${name} $${p.amount}`;
+        });
+      if(payLines.length){
+        html+=`<div style="margin-top:5px;font-size:11px;color:#94a3b8">ค่าเรือ: ${payLines.join(' · ')}</div>`;
+      }
     }
     html+=`</div>`;
   }
 
   // Per-player totals
-  // Build shipping company → player lookup
-  const shipCoOwner = {};
-  for(const sc of shipCompanies) shipCoOwner[sc.id] = players.find(p=>p.id===sc.playerId);
 
   const playerIds=[...new Set(lastResults.map(r=>r.player.id))];
   html+=`<div class="totals-section"><div style="font-size:11px;color:#94a3b8;text-transform:uppercase;margin-bottom:8px">สรุปต่อผู้เล่น</div>`;

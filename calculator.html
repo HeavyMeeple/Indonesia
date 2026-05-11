@@ -31,7 +31,7 @@ select{background:#0f172a;border:1px solid #334155;border-radius:4px;padding:2px
 .btn.danger{background:#7f1d1d;color:#fca5a5}
 .btn.green{background:#15803d;color:#bbf7d0}
 .badge{display:inline-flex;align-items:center;justify-content:center;background:#3b82f6;color:#fff;border-radius:10px;width:17px;height:17px;font-size:10px;margin-left:3px}
-.good-pill{padding:1px 7px;border-radius:10px;color:#fff;font-size:10px;font-weight:700;white-space:nowrap}
+.good-pill{padding:1px 7px;border-radius:10px;font-size:10px;font-weight:700;white-space:nowrap}
 .hint{color:#64748b;font-size:11px;text-align:center;padding:8px}
 .tool-bar{background:#1e3a5f;border-radius:6px;padding:6px 10px;display:flex;justify-content:space-between;align-items:center;color:#93c5fd;font-size:12px;margin-bottom:6px;gap:8px}
 .tool-bar.on{background:#1e40af;color:#fff}
@@ -48,8 +48,38 @@ td{padding:3px 5px;border-bottom:1px solid #1e293b;color:#e2e8f0}
 .sea-path{color:#7dd3fc}
 .ship-tag{background:#0f172a;border:1px solid #334155;border-radius:3px;padding:1px 5px;font-size:10px;margin:2px}
 .totals-section{background:#0f172a;border-radius:8px;padding:10px;margin-top:4px}
-.player-total{display:flex;align-items:center;gap:10px;padding:5px 8px;margin-bottom:4px;background:#1e293b;border-radius:6px;flex-wrap:wrap;border-left:4px solid transparent}
+.player-total{display:flex;flex-direction:column;padding:5px 8px;margin-bottom:4px;background:#1e293b;border-radius:6px;border-left:4px solid transparent}
 #error-bar{background:#7f1d1d;color:#fca5a5;padding:6px 12px;font-size:12px;display:none;flex-shrink:0}
+
+/* Floating tool indicator on map */
+#map-tool-float{position:absolute;top:10px;left:50%;transform:translateX(-50%);background:#1e40af;color:#fff;border-radius:20px;padding:5px 14px;font-size:12px;font-weight:600;display:none;white-space:nowrap;z-index:10;pointer-events:none;box-shadow:0 2px 8px rgba(0,0,0,.5)}
+
+/* Mobile bottom nav */
+#mobile-nav{display:none}
+.m-tab{flex:1;background:none;border:none;color:#64748b;cursor:pointer;font-size:10px;font-weight:600;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:4px}
+.m-tab .mi{font-size:20px;line-height:1}
+.m-tab.active{color:#60a5fa}
+
+@media(max-width:768px){
+  body{height:100dvh;padding-bottom:52px}
+  #mobile-nav{display:flex;position:fixed;bottom:0;left:0;right:0;height:52px;background:#1e293b;border-top:1px solid #334155;z-index:200}
+  .layout{flex-direction:column}
+  /* Map pane: hidden by default, shown when mv-map */
+  #map-pane{display:none;flex:1;overflow:auto;-webkit-overflow-scrolling:touch}
+  #map-svg{width:1800px;height:871px;cursor:crosshair;display:block;flex-shrink:0}
+  /* Side panel: hidden by default, shown when mv-setup or mv-results */
+  .side{display:none;width:100%;border-left:none;flex:1}
+  .tabs{display:none}
+  body.mv-map  #map-pane{display:block}
+  body.mv-setup .side,body.mv-results .side{display:flex}
+  body.mv-setup   #pane-setup{display:block!important}
+  body.mv-setup   #pane-results{display:none!important}
+  body.mv-results #pane-results{display:block!important}
+  body.mv-results #pane-setup{display:none!important}
+  /* Bigger touch targets on mobile */
+  .btn{padding:5px 11px;font-size:12px}
+  .m-tab.active .mi{color:#60a5fa}
+}
 </style>
 </head>
 <body>
@@ -62,6 +92,7 @@ td{padding:3px 5px;border-bottom:1px solid #1e293b;color:#e2e8f0}
 
 <div class="layout">
   <div id="map-pane">
+    <div id="map-tool-float"></div>
     <svg id="map-svg" viewBox="0 0 2646 1280" onclick="handleMapClick(event)"></svg>
   </div>
   <div class="side">
@@ -73,6 +104,12 @@ td{padding:3px 5px;border-bottom:1px solid #1e293b;color:#e2e8f0}
     <div class="tab-content" id="pane-results" style="display:none"></div>
   </div>
 </div>
+
+<nav id="mobile-nav">
+  <button class="m-tab active" data-v="map"     onclick="setMobileView('map')">    <span class="mi">🗺</span>แผนที่</button>
+  <button class="m-tab"        data-v="setup"   onclick="setMobileView('setup')">  <span class="mi">⚙️</span>ตั้งค่า</button>
+  <button class="m-tab"        data-v="results" onclick="setMobileView('results')"><span class="mi">📊</span>ผลลัพธ์<span id="results-badge-m" class="badge" style="display:none;margin-left:2px"></span></button>
+</nav>
 
 <script>
 // ── Graph Data ──────────────────────────────────────────────────────────────
@@ -106,8 +143,27 @@ let cities = [];          // {areaId, level:1|2|3}
 let tool = {kind:'none'}; // {kind:'none'|'factory'|'ship'|'city'|'erase', companyId?}
 let lastResults = [];
 
+// ── Mobile view ──────────────────────────────────────────────────────────────
+const isMobile = ()=>window.innerWidth<=768;
+function setMobileView(v){
+  document.body.className = 'mv-'+v;
+  document.querySelectorAll('.m-tab').forEach(el=>el.classList.toggle('active',el.dataset.v===v));
+}
+
 // ── Tool helpers ─────────────────────────────────────────────────────────────
-function setTool(t){ tool = t; renderMap(); renderSetup(); }
+function setTool(t){
+  tool = t;
+  if(isMobile() && t.kind!=='none') setMobileView('map');
+  updateMapToolFloat();
+  renderMap();
+  renderSetup();
+}
+function updateMapToolFloat(){
+  const el = document.getElementById('map-tool-float');
+  if(tool.kind==='none'){ el.style.display='none'; return; }
+  el.style.display='block';
+  el.textContent = toolLabel();
+}
 
 function handleMapClick(e){
   const svg = document.getElementById('map-svg');
@@ -382,6 +438,7 @@ function switchTab(t){
   document.getElementById('tab-results').classList.toggle('active',t==='results');
   document.getElementById('pane-setup').style.display=t==='setup'?'':'none';
   document.getElementById('pane-results').style.display=t==='results'?'':'none';
+  if(isMobile()) setMobileView(t==='results'?'results':'setup');
 }
 
 // ── Solver ───────────────────────────────────────────────────────────────────
@@ -647,6 +704,9 @@ function runCalculate(){
     switchTab('results');
     const badge = document.getElementById('results-badge');
     badge.style.display=''; badge.textContent=lastResults.length;
+    if(isMobile()) setMobileView('results');
+    const badgeM = document.getElementById('results-badge-m');
+    if(badgeM){ badgeM.style.display=''; badgeM.textContent=lastResults.length; }
   }catch(e){
     errBar.style.display='block'; errBar.textContent='Error: '+(e.message||e);
   }
@@ -761,6 +821,7 @@ for(const [seaId, node] of Object.entries(GRAPH)){
 }
 renderMap();
 renderSetup();
+if(isMobile()) setMobileView('map');
 </script>
 </body>
 </html>

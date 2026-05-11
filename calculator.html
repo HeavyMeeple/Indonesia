@@ -372,11 +372,11 @@ function buildZones(company){
   });
 }
 
-function buildCityDemands(remainingDemand){
-  return cities.filter(c=>(remainingDemand[c.areaId]||0)>0).map(c=>{
+function buildCityDemands(remaining, good){
+  return cities.filter(c=>(remaining[c.areaId]?.[good]||0)>0).map(c=>{
     const adjSea = new Set();
     for(const s of (GRAPH[c.areaId]?.s||[])) if(GRAPH[s]?.t==='S') adjSea.add(s);
-    return {cityId:c.areaId,cityAreaId:c.areaId,adjacentSeaAreaIds:[...adjSea].sort(),remainingDemand:remainingDemand[c.areaId]};
+    return {cityId:c.areaId,cityAreaId:c.areaId,adjacentSeaAreaIds:[...adjSea].sort(),remainingDemand:remaining[c.areaId][good]};
   }).sort((a,b)=>a.cityId.localeCompare(b.cityId));
 }
 
@@ -568,26 +568,31 @@ function runCalculate(){
   try{
     const shipNetworks = buildShipNetworks();
 
-    // Each city starts with full demand; companies consume it in operate order
+    // Each city starts with full demand per good type; consumed in operate order
     const remaining = {};
-    for(const city of cities) remaining[city.areaId] = city.level;
+    for(const city of cities){
+      remaining[city.areaId] = {};
+      for(const g of GOODS) remaining[city.areaId][g] = city.level;
+    }
 
     lastResults = prodCompanies.map((co,idx)=>{
       const player = players.find(p=>p.id===co.playerId)||{name:'?',color:'#888'};
       const ownedShipIds = shipCompanies.filter(s=>s.playerId===co.playerId).map(s=>s.id);
-      const demandSnapshot = {...remaining};  // demand available to this company
+      // Snapshot only the relevant good for this company
+      const demandSnapshot = {};
+      for(const city of cities) demandSnapshot[city.areaId] = remaining[city.areaId][co.good];
       const plan = solveDelivery({
         operatingCompanyId:co.id,
         good:co.good,
         shippingFeePerShipUse:SHIP_FEE,
         ownedShippingCompanyIds:ownedShipIds,
         zoneSupplies:buildZones(co),
-        cityDemands:buildCityDemands(remaining),
+        cityDemands:buildCityDemands(remaining, co.good),
         shippingCompanyNetworks:shipNetworks
       });
-      // Deduct delivered goods from remaining city demand
+      // Deduct delivered goods from remaining demand for this good type only
       for(const d of plan.deliveries){
-        remaining[d.cityId] = Math.max(0,(remaining[d.cityId]||0)-d.quantity);
+        remaining[d.cityId][co.good] = Math.max(0,(remaining[d.cityId]?.[co.good]||0)-d.quantity);
       }
       return {company:co,player,plan,operateOrder:idx+1,demandSnapshot};
     });
@@ -607,10 +612,10 @@ function renderResults(){
   let html='';
   for(const {company:co,player,plan,operateOrder,demandSnapshot} of lastResults){
     const gc=GOOD_COLOR[co.good];
-    // Show which cities had reduced demand by the time this company operated
+    // Show cities where this good's demand was already reduced when this company operated
     const reducedCities=cities.filter(c=>(demandSnapshot[c.areaId]||0)<c.level);
     const reducedNote=reducedCities.length
-      ? `<span style="color:#fbbf24;font-size:10px">⚠ demand ลดแล้ว: ${reducedCities.map(c=>`${c.areaId}(${demandSnapshot[c.areaId]||0}/${c.level})`).join(', ')}</span>`
+      ? `<span style="color:#fbbf24;font-size:10px">⚠ ${co.good} demand ลดแล้ว: ${reducedCities.map(c=>`${c.areaId}(${demandSnapshot[c.areaId]||0}/${c.level})`).join(', ')}</span>`
       : '';
     html+=`<div class="r-company">
       <div class="r-hdr">
